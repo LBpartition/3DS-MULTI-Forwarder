@@ -3,7 +3,7 @@
 ### Create & Install custom forwarder .cia's to launch .3DSX homebrew directly from 3DS Home Menu
 
 ## How to:
-1. Download the Latest 3DSX IconMaker Forwarder.zip
+1. Download the [Latest 3DSX IconMaker Forwarder.zip](https://github.com/LBpartition/3DSX-IconMaker-Forwarder/releases/latest)
 2. Extract it and copy the 3ds folder to the root of your 3DS SD Card
 3. Load "3DSX Icon Maker" from Homebrew Launcher
 4. Navigate to your 3dsx file, wait a few seconds for the banner, icon and title to load on the top screen, then press A and choose "Make Icon" to install the custom .3dsx forwarder .cia
