@@ -29,5 +29,5 @@ You can use custom icons and banners by placing .jpg or .png files in the same f
 [Post a new issue here](https://github.com/LBpartition/3DSX-IconMaker-Forwarder/issues) to report bugs or suggest features
 
 ## Credits
-- bheppe - Based on (gpSP-3D's IconMaker)[https://github.com/bheppe/gpsp-3d]
+- bheppe - Based on [gpSP-3D's IconMaker](https://github.com/bheppe/gpsp-3d)
 - Claude - its vibecoded
