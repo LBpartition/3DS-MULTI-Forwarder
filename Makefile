@@ -9,6 +9,7 @@ FILE_PREFIX_MAP := $(patsubst %/,%,$(shell cygpath -m "$(TOPDIR)" 2>/dev/null))
 ifeq ($(strip $(FILE_PREFIX_MAP)),)
 FILE_PREFIX_MAP := $(TOPDIR)
 endif
+APP_ICON := $(TOPDIR)/icon.png
 include $(DEVKITARM)/3ds_rules
 
 TARGET      := 3dsx-iconmaker
@@ -16,7 +17,6 @@ BUILD       := build
 SOURCES     := source
 INCLUDES    := source
 ROMFS       := romfs
-ICON        := $(CURDIR)/icon.png
 APP_TITLE   := 3DSX Icon Maker
 APP_AUTHOR  := 3DSX Icon Maker contributors
 APP_DESCRIPTION := Create HOME Menu forwarders for 3DSX apps
