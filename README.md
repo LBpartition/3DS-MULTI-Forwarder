@@ -25,6 +25,9 @@ You can use custom icons and banners by placing .jpg or .png files in the same f
 - [Abes Exodus](https://gbatemp.net/download/oddworld-abes-exoddus-r-e-l-i-v-e-native-port.40052/)
 - [Clear MAC Filter](https://gbatemp.net/threads/release-clear-mac-filter.515882/)
 
+## Bugs & Suggestions
+[Post a new issue here](https://github.com/LBpartition/3DSX-IconMaker-Forwarder/issues) to report bugs or suggest features
+
 ## Credits
 - bheppe - Based on (gpSP-3D's IconMaker)[https://github.com/bheppe/gpsp-3d]
 - Claude - its vibecoded
