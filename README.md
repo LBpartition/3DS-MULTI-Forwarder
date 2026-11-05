@@ -18,7 +18,7 @@ You can use custom icons and banners by placing .jpg or .png files in the same f
 - icon (48x48) - `\3ds\fallout2\fallout2.png`
 - Banner (256x128) - `\3ds\fallout2\fallout2.banner.png`
 
-## Tested on New 3DS Console with:
+## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
 - [OMORI](https://github.com/meetox80/omori)
 - [Abes Oddysse](https://gbatemp.net/download/oddworld-abes-oddysse-3ds-native-port.40053/)
