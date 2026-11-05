@@ -30,4 +30,5 @@ You can use custom icons and banners by placing .jpg or .png files in the same f
 
 ## Credits
 - bheppe - Based on [gpSP-3D's IconMaker](https://github.com/bheppe/gpsp-3d)
+- Fadgiras - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
 - Claude - its vibecoded
