@@ -4,18 +4,19 @@
 
 ## How to:
 1. Download the [Latest 3DSX IconMaker Forwarder.zip](https://github.com/LBpartition/3DSX-IconMaker-Forwarder/releases/latest)
-2. Extract it and copy the 3ds folder to the root of your 3DS SD Card
-3. Load "3DSX Icon Maker" from Homebrew Launcher
-4. Navigate to your 3dsx file, wait a few seconds for the banner, icon and title to load on the top screen, then press A and choose "Make Icon" to install the custom .3dsx forwarder .cia
+2. Extract it and copy the `3ds` folder to the root of your 3DS SD Card
+3. Load `3DSX Icon Maker` from Homebrew Launcher
+4. Navigate to the `.3dsx` file you want to forward, wait a few seconds for the banner, icon and title to load on the top screen, then press `A` and choose `Make Icon` to install the custom .3dsx forwarder
+   
 
 ## Custom Icons & Banners 
 
-The embedded 3dsx/smdh title, publisher & icon are used to create the forwarder .cia's title, publisher, icon & banner
+The forwarders title, publisher, icon & banner are created from the `.3dsx/.smdh`'s embedded title, publisher & icon.
 
-You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you are forwarding, name them like this:
+You can use custom icons and banners by placing `.jpg` or `.png` files in the same folder as the .3dsx you want to forward, name them like this:
 
 - 3dsx - `\3ds\fallout2\fallout2.3dsx`
-- icon (48x48) - `\3ds\fallout2\fallout2.png`
+- Icon (48x48) - `\3ds\fallout2\fallout2.png`
 - Banner (256x128) - `\3ds\fallout2\fallout2.banner.png`
 
 ## Tested on New 3DS & Old 3DS XL with:
