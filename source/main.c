@@ -42,7 +42,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.2.0"
+#define ICONMAKER_VERSION "0.2.2"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define APP_DIR     "sdmc:/3ds/3dsx-iconmaker"
@@ -1455,7 +1455,7 @@ static void draw_header(void)
 
 static void draw_tabs(int tab)
 {
-   static const char *names[2] = { "3DSX apps", "My icons" };
+   static const char *names[2] = { "3DSX Apps", "My icons" };
    int i, tw = UI_W / 2;
    for (i = 0; i < 2; i++)
    {
@@ -1549,7 +1549,7 @@ static void draw_bottom(int tab, int sel, int top)
       if (!nicons)
       {
          ui_text_center(&ui_font_body, UI_W / 2, 120, "No icons yet", C_DIM);
-         ui_text_center(&ui_font_small, UI_W / 2, 142, "Make one in 3DSX apps: pick an app, press A", C_FAINT);
+         ui_text_center(&ui_font_small, UI_W / 2, 142, "Make one in 3DSX Apps: pick an app, press A", C_FAINT);
       }
       for (i = 0; i < ROWS && top + i < nicons; i++)
       {
@@ -1572,7 +1572,7 @@ static void draw_bottom(int tab, int sel, int top)
                        systems[ic->sys].console, ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
       }
       draw_scrollbar(nicons, top);
-      draw_footer(nicons ? "X: delete icon    B: 3DSX apps" : "B: 3DSX apps");
+      draw_footer(nicons ? "X: delete icon    L/B: 3DSX Apps" : "L/B: 3DSX Apps");
    }
 }
 
@@ -2578,7 +2578,7 @@ int main(void)
       }
       else
       {
-         if (k & KEY_B)
+         if (k & (KEY_L | KEY_B))
          {
             tab = TAB_GAMES;
             read_dir();
