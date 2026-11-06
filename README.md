@@ -12,7 +12,7 @@
 
 - You can check the Installed Tab to find a list of all your installed .3dsx Forwarders (you can uninstall them from here too)
  
-## Custom Icons & Banners 
+## Custom Title/Name, Publisher, Icons & Banners 
 
 The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - If you want a custom Publisher or Title/name, you can edit & create .smdh's with  [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
 
