@@ -7,21 +7,26 @@
 2. Extract it and copy the `3ds` folder to the root of your 3DS SD Card
 3. Load `3DSX Forwarder` from Homebrew Launcher
 4. Go to the .3dsx file you want to forward
-5. Wait a few seconds for the banner, icon and title to load on the top screen (press select to cycle through some different banner styles)
-6. Press A and choose Make Icon to create and install the forwarder, you can now launch your .3dsx directly from the 3DS Home Menu
+5. Wait a few seconds for the banner, icon and title to load on the top screen 
+- Press `Select` to cycle through some different banner styles.
+6. Press A and choose `Make Forwarder`, 
+7. It will ask if you want to enter a custom Title/Name and Publisher,
+- `A` = Yes - `B` = NO
+- If `Yes` - The 3DS keyboard pops up and you can type in the name you want,
+- If `No` - The embedded/preview title/name/publisher will be used instead
+8. You can now launch your .3dsx directly from the 3DS Home Menu
 
-- You can check the Installed Tab to find a list of all your installed .3dsx Forwarders (you can uninstall them from here too)
+- Check the Installed Tab to find a list of all your installed .3dsx Forwarders (you can uninstall them from here too)
  
-## Custom Title/Name, Publisher, Icons & Banners 
+## Custom Icons & Banners 
 
-The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - If you want a custom Publisher or Title/name, you can edit & create .smdh's with  [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
+#### The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title. 
 
-You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
+#### You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
 
-- 3dsx - \3ds\fallout2\ `fallout2.3dsx`
-- Icon (48x48) - \3ds\fallout2\ `fallout2.png` - OPTIONAL
-- Banner (256x128) - \3ds\fallout2\ `fallout2.banner.png` - OPTIONAL
-- smdh -> \3ds\fallout2\ `fallout2.smdh` - OPTIONAL
+- \3ds\fallout2\ `fallout2.3dsx` - 3dsx
+- \3ds\fallout2\ `fallout2.png` - Icon (48x48)
+- \3ds\fallout2\ `fallout2.banner.png` - Banner (256x128)
 
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
