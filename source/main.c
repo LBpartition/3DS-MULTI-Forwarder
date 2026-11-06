@@ -44,7 +44,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.3.0"
+#define ICONMAKER_VERSION "0.3.1"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
@@ -1198,7 +1198,6 @@ static int make_icon(const char *path, const entry *e, char *err, int errlen)
       for (lang = 0; lang < 16; lang++)
       {
          size_t title_off = 8 + (size_t)lang * 0x200;
-         memcpy(smdh + title_off, app_smdh + title_off, 0x100);
          memcpy(smdh + title_off + 0x180, app_smdh + title_off + 0x180, 0x80);
       }
    }
