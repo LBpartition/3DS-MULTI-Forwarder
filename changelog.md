@@ -15,5 +15,5 @@
 ### v0.3.1
 - Forwarders were using the wrong title/name, fixed.
 
-### v0.3.2 Changes 
+### v0.3.2
 - Various UI Tweaks
