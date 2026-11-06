@@ -8,13 +8,16 @@
 3. Load `3DSX Forwarder` from Homebrew Launcher
 4. Go to the .3dsx file you want to forward
 5. Wait a few seconds for the banner, icon and title to load on the top screen (press select to cycle through some different banner styles)
-6. Press A and choose Make Icon to create and install the forwarder, you can now launch your .3dsx directly from the 3DS Home Menu
+6. Press A and choose Make Forwarder to create and install the forwarder
+7. At "Custom Title/Name?", press A to enter a custom title with the 3DS keyboard, or B to use the standard title
+8. At "Custom Publisher?", press A to enter a custom publisher with the 3DS keyboard, or B to use the standard publisher
+9. After installation, launch your .3dsx directly from the 3DS Home Menu
 
 - You can check the Installed Tab to find a list of all your installed .3dsx Forwarders (you can uninstall them from here too)
  
 ## Custom Title/Name, Publisher, Icons & Banners 
 
-The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - If you want a custom Publisher or Title/name, you can edit & create .smdh's with  [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
+The forwarder's title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon by default. You can enter a custom title/name and publisher during forwarder creation using the prompts and 3DS keyboard. Alternatively, you can edit & create .smdh's with [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
 
 You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
 
