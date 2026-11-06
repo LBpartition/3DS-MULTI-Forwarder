@@ -44,7 +44,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.3.2"
+#define ICONMAKER_VERSION "0.3.3"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
@@ -1131,7 +1131,8 @@ static Result install_cia_buf(const u8 *cia, u32 size)
    return R_SUCCEEDED(r) ? -1 : r;
 }
 
-static int make_icon(const char *path, const entry *e, char *err, int errlen)
+static int make_icon(const char *path, const entry *e, const char *custom_title,
+                     const char *custom_publisher, char *err, int errlen)
 {
    static game_art art;
    static u8 app_smdh[FWDCIA_SMDH_SIZE];
@@ -1148,6 +1149,20 @@ static int make_icon(const char *path, const entry *e, char *err, int errlen)
    bool has_app_smdh;
 
    make_art(path, e, &art);
+   if (custom_title && custom_title[0])
+   {
+      snprintf(art.title, sizeof(art.title), "%s", custom_title);
+      if (art.flat && !art.has_banner_png)
+      {
+         default_banner(art.title, art.label, 128, 128, art.banner,
+                        banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
+         banner_name(art.title, art.sys, art.banner, 256 - 120 - 8);
+      }
+      if (!art.flat)
+         name_strip(art.title, art.sys, art.name);
+   }
+   if (custom_publisher)
+      snprintf(art.publisher, sizeof(art.publisher), "%s", custom_publisher);
    has_app_smdh = read_app_smdh(path, app_smdh);
    if (strlen(path) >= 256)
    {
@@ -1200,6 +1215,13 @@ static int make_icon(const char *path, const entry *e, char *err, int errlen)
          size_t title_off = 8 + (size_t)lang * 0x200;
          memcpy(smdh + title_off + 0x180, app_smdh + title_off + 0x180, 0x80);
       }
+   }
+   if (custom_publisher &&
+       cia_set_titles(&parsed, art.title, art.publisher) != CIA_OK)
+   {
+      free(cia);
+      snprintf(err, errlen, "Could not set the custom title and publisher.");
+      return -1;
    }
    if (cia_set_core_path(&parsed, path) != CIA_OK ||
        cia_set_rom_path(&parsed, "") != CIA_OK)
@@ -1956,7 +1978,8 @@ static void make_one(const entry *e)
 {
    const char *name = e->name;
    char path[800], err[200], body[400], missing[160] = "";
-   bool again;
+   char custom_title[64] = "", custom_publisher[64] = "";
+   bool again, use_custom_publisher = false;
    snprintf(path, sizeof(path), "%s%s", cwd, name);
    again = icon_installed(title_id_for_path(path));
    if (!sys_installed[e->sys])
@@ -1964,10 +1987,35 @@ static void make_one(const entry *e)
    snprintf(body, sizeof(body), "%s\nIt launches through Homebrew Launcher.\nThe top screen shows how it will look.%s",
             again ? "It's on the HOME Menu already:\nthis makes it again." : "Its icon and banner go on the HOME Menu.",
             missing);
-   if (!dialog(again ? "Make the icon again?" : "Make an icon?", body, "Make icon", "Cancel", C_ACCENT))
+   if (!dialog(again ? "Make the icon again?" : "Make an icon?", body, "Make Forwarder", "Cancel", C_ACCENT))
       return;
+   if (dialog("Custom Title/Name?", "", "Yes", "No", C_ACCENT))
+   {
+      SwkbdState keyboard;
+      swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, sizeof(custom_title) - 1);
+      swkbdSetFeatures(&keyboard, SWKBD_MULTILINE);
+      swkbdSetHintText(&keyboard, "Enter custom title");
+      if (swkbdInputText(&keyboard, custom_title, sizeof(custom_title)) != SWKBD_BUTTON_CONFIRM)
+         return;
+      if (!custom_title[0])
+      {
+         dialog("Title required", "Enter a title, or choose No to use the standard title.",
+                "OK", NULL, C_ROW_SEL);
+         return;
+      }
+   }
+   if (dialog("Custom Publisher?", "", "Yes", "No", C_ACCENT))
+   {
+      SwkbdState keyboard;
+      swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, sizeof(custom_publisher) - 1);
+      swkbdSetHintText(&keyboard, "Enter custom publisher");
+      if (swkbdInputText(&keyboard, custom_publisher, sizeof(custom_publisher)) != SWKBD_BUTTON_CONFIRM)
+         return;
+      use_custom_publisher = true;
+   }
    progress("Making the icon...", name, 0, 1);
-   if (make_icon(path, e, err, sizeof(err)))
+   if (make_icon(path, e, custom_title[0] ? custom_title : NULL,
+                 use_custom_publisher ? custom_publisher : NULL, err, sizeof(err)))
       dialog("Could not make it", err, "OK", NULL, C_ROW_SEL);
    else
       dialog("Done", "It's on the HOME Menu now.", "OK", NULL, UI_RGB(0x2E, 0x8B, 0x57));
@@ -1993,7 +2041,7 @@ static void make_folder(void)
       snprintf(line, sizeof(line), "%d of %d:  %s", done + failed + 1, ngames, entries[i].name);
       progress("Making icons...", line, done + failed, ngames);
       snprintf(path, sizeof(path), "%s%s", cwd, entries[i].name);
-      if (make_icon(path, &entries[i], err, sizeof(err)))
+      if (make_icon(path, &entries[i], NULL, NULL, err, sizeof(err)))
       {
          if (!failed)
             snprintf(first_err, sizeof(first_err), "%s", err);
