@@ -343,3 +343,20 @@ out:
    free(packed);
    return ret;
 }
+
+int banner_set_sound(uint8_t *cbmd, uint32_t size, const uint8_t *cwav,
+                     uint32_t cwav_size, uint32_t *banner_size,
+                     char *err, int errlen)
+{
+   uint32_t offset;
+
+   if (size < 0x88 || memcmp(cbmd, "CBMD", 4) || cwav_size < 0x40 ||
+       memcmp(cwav, "CWAV", 4) || rd32(cwav + 12) != cwav_size)
+      return fail(err, errlen, "invalid banner sound data");
+   offset = rd32(cbmd + 0x84);
+   if (offset > size || cwav_size > size - offset)
+      return fail(err, errlen, "banner sound does not fit");
+   memcpy(cbmd + offset, cwav, cwav_size);
+   *banner_size = offset + cwav_size;
+   return 0;
+}

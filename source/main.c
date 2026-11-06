@@ -37,6 +37,7 @@
 #include "netget.h"
 #include "cia_patch.h"
 #include "banner.h"
+#include "wav.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -44,7 +45,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.3.3"
+#define ICONMAKER_VERSION "0.3.5"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
@@ -62,6 +63,7 @@
 enum { STYLE_BLUE, STYLE_CLEAR, STYLE_3D, STYLE_COUNT };
 static const char *style_key[STYLE_COUNT] = { "blue", "none", "3d" };
 static int banner_style = STYLE_3D;
+static int banner_cycle;
 
 /* A picture of another shape than the icon, banner or tile: shrunk to fit
  * with margins (white on the icon, as the HOME Menu draws see-through
@@ -368,7 +370,16 @@ static void utf16_to_ascii(const u8 *in, int max, char *out, int outlen)
       u16 c = in[2 * i] | in[2 * i + 1] << 8;
       if (!c)
          break;
-      out[k++] = c >= 32 && c < 127 ? (char)c : '?';
+      if (c == '\r')
+      {
+         if (i + 1 < max && (in[2 * (i + 1)] | in[2 * (i + 1) + 1] << 8) == '\n')
+            i++;
+         out[k++] = '\n';
+      }
+      else if (c == '\n')
+         out[k++] = '\n';
+      else
+         out[k++] = c >= 32 && c < 127 ? (char)c : '?';
    }
    out[k] = 0;
 }
@@ -704,6 +715,41 @@ static void enter(const char *name)
    }
    cache_clear();
    read_dir();
+}
+
+static void leave_folder(int *sel)
+{
+   char name[sizeof(entries[0].name)];
+   const char *end, *start;
+   size_t n = strlen(cwd);
+   int i;
+
+   if (n <= 6)
+   {
+      *sel = 0;
+      return;
+   }
+   end = cwd + n - 1;
+   start = end;
+   while (start > cwd + 6 && start[-1] != '/')
+      start--;
+   n = end - start;
+   if (!n || n >= sizeof(name))
+   {
+      *sel = 0;
+      enter("..");
+      return;
+   }
+   memcpy(name, start, n);
+   name[n] = 0;
+   enter("..");
+   for (i = 0; i < nentries; i++)
+      if (entries[i].dir && !strcmp(entries[i].name, name))
+      {
+         *sel = i;
+         return;
+      }
+   *sel = 0;
 }
 
 /* The game's picture with this ending ("" or ".banner") and type (an index
@@ -1065,29 +1111,34 @@ static void make_art(const char *path, const entry *e, game_art *a)
    /* A game's own .banner picture always wins: it's shown flat, also when
     * 3D is chosen (3D is for the games without one). Without one, the 3D
     * banner needs no flat banner. */
-   a->has_banner_png = e->pic[1] >= 0;
-   a->banner_too_big = false;
-   a->flat = banner_style != STYLE_3D;
-   if (a->flat || e->pic[1] >= 0)
    {
-      banner_png = load_picture(path, ".banner", e->pic[1], 256, 128, &bw, &bh, &big);
-      a->has_banner_png = banner_png != NULL;
-      a->banner_too_big = big;
-      a->banner_big[0] = bw;
-      a->banner_big[1] = bh;
-      if (banner_png)
+      bool use_custom_banner = e->pic[1] >= 0 && banner_cycle == 0;
+      a->has_banner_png = use_custom_banner;
+      a->flat = use_custom_banner || banner_style != STYLE_3D;
+      a->banner_too_big = false;
+      if (a->flat || use_custom_banner)
       {
-         fit_picture(banner_png, bw, bh, a->banner, 256, 128);
-         stbi_image_free(banner_png);
-         a->flat = true;
+         banner_png = use_custom_banner
+            ? load_picture(path, ".banner", e->pic[1], 256, 128, &bw, &bh, &big)
+            : NULL;
+         a->has_banner_png = banner_png != NULL;
+         a->banner_too_big = big;
+         a->banner_big[0] = bw;
+         a->banner_big[1] = bh;
+         if (banner_png)
+         {
+            fit_picture(banner_png, bw, bh, a->banner, 256, 128);
+            stbi_image_free(banner_png);
+            a->flat = true;
+         }
+         else if (a->flat)
+         {
+            default_banner(a->title, a->label, 128, 128, a->banner,
+                           banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
+            banner_name(a->title, sys, a->banner, 256 - 120 - 8);
+         }
+         tm_mark("flat banner");
       }
-      else if (a->flat)                /* the icon, bigger, and the name */
-      {
-         default_banner(a->title, a->label, 128, 128, a->banner,
-                        banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
-         banner_name(a->title, sys, a->banner, 256 - 120 - 8);
-      }
-      tm_mark("flat banner");
    }
    if (!a->flat)
    {
@@ -1129,6 +1180,61 @@ static Result install_cia_buf(const u8 *cia, u32 size)
       return AM_FinishCiaInstall(h);
    AM_CancelCIAInstall(h);
    return R_SUCCEEDED(r) ? -1 : r;
+}
+
+static int apply_custom_banner_sound(cia_t *parsed, u8 *banner,
+                                     size_t banner_size, const char *path,
+                                     bool has_custom_banner, char *err,
+                                     int errlen)
+{
+   const char *extension;
+   char wav_path[800];
+   uint8_t *cwav = NULL, *copy = NULL;
+   size_t cwav_size = 0;
+   uint32_t banner_len;
+   int result;
+
+   if (!has_custom_banner)
+      return 0;
+   extension = strrchr(path, '.');
+   result = extension ? snprintf(wav_path, sizeof(wav_path), "%.*s.banner.wav",
+                                 (int)(extension - path), path) : -1;
+   if (result < 0 || result >= (int)sizeof(wav_path))
+   {
+      snprintf(err, errlen, "Could not create the .banner.wav path.");
+      return -1;
+   }
+   result = wav_to_cwav_file(wav_path, &cwav, &cwav_size, err, errlen);
+   if (result == 1)
+      return 0;
+   if (result < 0)
+      return -1;
+   if (banner_size > UINT32_MAX || cwav_size > UINT32_MAX)
+   {
+      free(cwav);
+      snprintf(err, errlen, "The custom banner sound is too large.");
+      return -1;
+   }
+   copy = malloc(banner_size);
+   if (!copy)
+   {
+      free(cwav);
+      snprintf(err, errlen, "Not enough memory to set the banner sound.");
+      return -1;
+   }
+   memcpy(copy, banner, banner_size);
+   result = banner_set_sound(copy, (uint32_t)banner_size, cwav,
+                             (uint32_t)cwav_size, &banner_len, err, errlen);
+   free(cwav);
+   if (result || cia_set_banner(parsed, copy, banner_len) != CIA_OK)
+   {
+      if (!result)
+         snprintf(err, errlen, "The custom banner sound does not fit the CIA.");
+      free(copy);
+      return -1;
+   }
+   free(copy);
+   return 0;
 }
 
 static int make_icon(const char *path, const entry *e, const char *custom_title,
@@ -1244,6 +1350,12 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
    {
       if (banner_set_images(template_banner, (u32)banner_reserved, art.banner,
                             NULL, err, errlen))
+      {
+         free(cia);
+         return -1;
+      }
+      if (apply_custom_banner_sound(&parsed, template_banner, banner_reserved,
+                                    path, e->pic[1] >= 0, err, errlen))
       {
          free(cia);
          return -1;
@@ -1568,7 +1680,9 @@ static void draw_bottom(int tab, int sel, int top)
       static const char *const style_short[STYLE_COUNT] = { "blue", "no background", "3D" };
       int iw;
       snprintf(info, sizeof(info), "SELECT: %s   X: %s",
-               style_short[banner_style], fit_key[fit_mode]);
+               entries[sel].pic[1] >= 0 && banner_cycle == 0
+                  ? "custom" : style_short[banner_style],
+               fit_key[fit_mode]);
       iw = ui_text_w(&ui_font_small, info);
       ui_text(&ui_font_small, 10, LIST_Y - 18, cwd + 5, C_FAINT, UI_W - 30 - iw);
       ui_text_right(&ui_font_small, UI_W - 10, LIST_Y - 18, info, C_DIM);
@@ -1634,7 +1748,15 @@ static void draw_bottom(int tab, int sel, int top)
                for (px = 0; px < 19; px++)
                   ui_canvas[(y + 1 + py) * UI_W + ROW_X + 9 + px] = ic->icon24[(py * 24 / 19) * 24 + px * 24 / 19];
          }
-         ui_text_vc(&ui_font_body, ROW_X + 36, y, h, ic->name, s ? C_TEXT : C_TEXT2, ROW_W - 90);
+         {
+            char single_line[sizeof(ic->name)];
+            int j;
+            for (j = 0; ic->name[j] && j < (int)sizeof(single_line) - 1; j++)
+               single_line[j] = ic->name[j] == '\n' || ic->name[j] == '\r' ? ' ' : ic->name[j];
+            single_line[j] = 0;
+            ui_text_vc(&ui_font_body, ROW_X + 36, y, h, single_line,
+                       s ? C_TEXT : C_TEXT2, ROW_W - 90);
+         }
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10, y + (h - ui_font_small.ascent) / 2 - 1,
                        ic->sys == SYS_3DSX ? "INSTALLED" : systems[ic->sys].console,
                        ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
@@ -1669,13 +1791,13 @@ static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, in
    }
    if (a->title[0])
    {
-      snprintf(line, sizeof(line), "Title: %s", a->title);
+      snprintf(line, sizeof(line), "%s", a->title);
       ui_text(&ui_font_body, text_x, text_y, line, C_TEXT, UI_W - text_x - 8);
       text_y_next += 16;
    }
    if (a->publisher[0])
    {
-      snprintf(line, sizeof(line), "Publisher: %s", a->publisher);
+      snprintf(line, sizeof(line), "%s", a->publisher);
       ui_text(&ui_font_small, text_x, text_y_next, line, C_DIM, UI_W - text_x - 8);
    }
 }
@@ -1685,14 +1807,19 @@ static void draw_top_game(const game_art *a)
    top_bg();
    if (!a->flat)
    {
-      ui_rrect_outline(30, 0, 260, 196, 6, 1, C_FAINT);
-      blit_rgba(a->label, 128, 128, 96, 2, 1);
-      blit_rgba(a->name, 256, 64, 32, 130, 1);
-      draw_top_game_metadata(a, -1, 176, 62, 198);
-      return;
+      ui_rrect(42, 0, 236, 168, 7, C_BG);
+      ui_rrect_outline(42, 0, 236, 168, 7, 1, C_FAINT);
+      ui_rrect(104, 0, 112, 108, 16, C_PANEL);
+      blit_rgba(a->icon48, 48, 48, 112, 4, 2);
+      ui_text_center(&ui_font_title, UI_W / 2, 116, a->title, C_TEXT);
+      ui_text_center(&ui_font_small, UI_W / 2, 151, "Homebrew  ·  3DSX", C_ACCENT);
    }
-   ui_rrect_outline(30, 24, 260, 132, 6, 1, C_FAINT);
-   blit_rgba(a->banner, 256, 128, 32, 26, 1);
+   else
+   {
+      ui_rrect(30, 14, 260, 132, 5, C_BG);
+      blit_rgba(a->banner, 256, 128, 32, 16, 1);
+      ui_rrect_outline(30, 14, 260, 132, 5, 1, C_FAINT);
+   }
    draw_top_game_metadata(a, 56, 180, 112, 188);
 }
 
@@ -1726,17 +1853,34 @@ static void draw_top_icon(const icon_entry *ic)
 {
    static u8 smdh[FWDCIA_SMDH_SIZE];
    static u16 big[48 * 48];
-   char tid[40];
+   char tid[40], line[64];
+   const char *p;
+   int y = 160, lines = 0;
    top_bg();
-   ui_rrect(28, 30, 104, 104, 14, C_PANEL);
+   ui_rrect(108, 30, 104, 104, 14, C_PANEL);
    if (read_title_smdh(ic->tid, smdh))
    {
       smdh_icon_decode(smdh + 0x24C0, 48, big);
-      blit_565(big, 48, 48, 32, 34, 2);
+      blit_565(big, 48, 48, 112, 34, 2);
    }
-   ui_text(&ui_font_bold, 146, 40, ic->name, C_TEXT, UI_W - 160);
+   p = ic->name;
+   while (*p)
+   {
+      const char *nl = strchr(p, '\n');
+      int n = nl ? (int)(nl - p) : (int)strlen(p);
+      if (n >= (int)sizeof(line))
+         n = sizeof(line) - 1;
+      memcpy(line, p, n);
+      line[n] = 0;
+      ui_text_center(&ui_font_bold, UI_W / 2, y, line, C_TEXT);
+      y += 20;
+      lines++;
+      p += n + (nl ? 1 : 0);
+      if (!nl)
+         break;
+   }
    snprintf(tid, sizeof(tid), "Title ID: %016llX", (unsigned long long)ic->tid);
-   ui_text(&ui_font_small, 146, 66, tid, C_DIM, 0);
+   ui_text_center(&ui_font_small, UI_W / 2, y + (lines > 1 ? 20 : 8), tid, C_DIM);
 }
 
 /* ---- dialogs on the bottom screen ---- */
@@ -2783,13 +2927,19 @@ int main(void)
          }
          else if (k & KEY_B && strcmp(cwd, "sdmc:/"))
          {
-            enter("..");
-            sel = top = 0;
+            leave_folder(&sel);
          }
          else if (k & KEY_SELECT)
          {
-            /* the banner style, for icons made from now on */
-            banner_style = (banner_style + 1) % STYLE_COUNT;
+            if (nentries && !entries[sel].dir && entries[sel].pic[1] >= 0)
+            {
+               banner_cycle = (banner_cycle + 1) % 4;
+               if (banner_cycle == 1) banner_style = STYLE_BLUE;
+               else if (banner_cycle == 2) banner_style = STYLE_CLEAR;
+               else if (banner_cycle == 3) banner_style = STYLE_3D;
+            }
+            else
+               banner_style = (banner_style + 1) % STYLE_COUNT;
             cache_clear();
             save_settings();
             top_wait = 1;
@@ -2815,8 +2965,13 @@ int main(void)
          {
             if (entries[sel].dir)
             {
-               enter(entries[sel].name);
-               sel = top = 0;
+               if (!strcmp(entries[sel].name, ".."))
+                  leave_folder(&sel);
+               else
+               {
+                  enter(entries[sel].name);
+                  sel = top = 0;
+               }
             }
             else if (am)
             {
@@ -2846,6 +3001,8 @@ int main(void)
          }
       }
 
+      if (sel != old_sel || tab != old_tab)
+         banner_cycle = 0;
       count = tab == TAB_GAMES ? nentries : nicons;
       if (sel >= count) sel = count - 1;
       if (sel < 0) sel = 0;

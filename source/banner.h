@@ -13,4 +13,9 @@ int banner_set_image(uint8_t *cbmd, uint32_t size, const uint8_t *rgba256x128,
 int banner_set_images(uint8_t *cbmd, uint32_t size, const uint8_t *rgba256x128,
                       const uint8_t *label128, char *err, int errlen);
 
+/* Replace the CWAV at the end of a CBMD banner. */
+int banner_set_sound(uint8_t *cbmd, uint32_t size, const uint8_t *cwav,
+                     uint32_t cwav_size, uint32_t *banner_size,
+                     char *err, int errlen);
+
 #endif
