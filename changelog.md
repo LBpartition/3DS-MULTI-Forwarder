@@ -16,4 +16,9 @@
 - Forwarders were using the wrong title/name, fixed.
 
 ### v0.3.2
-- Various UI Tweaks
+- Various UI tweaks
+
+### v0.3.3
+- A few small UI tweaks
+- Allow entering custom Titles/Names/Publishers within the app
+###### *Custom Icons/Banners still need `.png` or `.jpg` files on your SD card, see*: [ReadMe-Custom Icons & Banners](https://github.com/LBpartition/3DSX-Forwarder/blob/main/README.md#custom-icons--banners) *for more info*
