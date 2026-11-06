@@ -2,7 +2,7 @@
 
 ### Create & Install custom forwarders to launch .3DSX homebrew directly from 3DS Home Menu
 
-## How to:
+## How to Use:
 1. Download the [Latest 3DSX IconMaker Forwarder.zip](https://github.com/LBpartition/3DSX-IconMaker-Forwarder/releases/latest)
 2. Extract it and copy the `3ds` folder to the root of your 3DS SD Card
 3. Load `3DSX Icon Maker` from Homebrew Launcher
@@ -33,3 +33,10 @@ You can use custom icons and banners by placing `.jpg` or `.png` files in the sa
 - bheppe - Based on [gpSP-3D's IconMaker](https://github.com/bheppe/gpsp-3d)
 - Fadgiras - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
 - Claude - its vibecoded
+
+## Gallery
+<img width="400" height="480" alt="Forwarder-Fallout-Preview" src="https://github.com/user-attachments/assets/171201a4-8e43-4205-a5d8-f2c7e1e47c55" />
+<img width="400" height="480" alt="Forwarder-Fallout-Result" src="https://github.com/user-attachments/assets/7854f348-cdcc-4fb8-aa34-da8cf74025ca" />
+<img width="400" height="480" alt="Forwarder-CMF-Preview" src="https://github.com/user-attachments/assets/f71efe62-c60c-48c9-b575-8b15953e653f" />
+<img width="400" height="480" alt="Forwarder-CMF-Result" src="https://github.com/user-attachments/assets/eed7b843-24f6-47b5-9c34-3c7e54b3dc52" />
+<img width="400" height="480" alt="Manage Installed Forwarders" src="https://github.com/user-attachments/assets/a723796a-5d7c-4223-b243-c4d734e35629" />
