@@ -4,7 +4,7 @@
 
 | List Installed Forwarders | Preview Before Installing | Installed Forwarders | 
 |---|---|---| 
-| <img width="400" height="480" alt="2026-11-07_09-27-22 920_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/8458bd85-474b-4a3b-bebc-0c9d8b29be29" /> | <img width="400" height="480" alt="2026-11-07_09-16-28 751_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/e89c5152-7270-44a2-9faa-dc48cf61a2f4" /> | <img width="400" height="480" alt="2026-11-07_09-30-41 682_cmb" src="https://github.com/user-attachments/assets/b0d2e996-59d6-4590-b701-2388e8ee964b" />
+| <img width="400" height="480" alt="2026-11-07_09-27-22 920_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/8458bd85-474b-4a3b-bebc-0c9d8b29be29" /> | <img width="400" height="480" alt="2026-11-07_09-16-16 470_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/b04eaa54-3f16-4b26-ac27-3e05c87e711f" /> | <img width="400" height="480" alt="2026-11-07_09-30-41 682_cmb" src="https://github.com/user-attachments/assets/b0d2e996-59d6-4590-b701-2388e8ee964b" />
 |  | <img width="400" height="480" alt="2026-11-07_09-25-40 412_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/db5fa9c3-890f-483a-9f7d-c537291ca5a5" /> | <img width="400" height="480" alt="2026-11-07_09-48-48 440_cmb" src="https://github.com/user-attachments/assets/6410c66b-8da8-45b6-a309-5b186264101f" />|
 
 ## How to Use:
