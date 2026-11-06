@@ -1,6 +1,6 @@
 # 3DS-Forwarder
 
-### Create, Install & Manaage Custom Forwarders to Launch .3DSX Homebrew Directly from 3DS Home Menu
+### Create, Install & Manage Custom Forwarders to Launch .3DSX Homebrew Directly from 3DS Home Menu
 
 ## How to Use:
 1. Download the [Latest 3DSX-Forwarder.zip](https://github.com/LBpartition/3DSX-Forwarder/releases/latest)
