@@ -14,7 +14,7 @@
  
 ## Custom Icons & Banners 
 
-The Forwarders title, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - you can create custom .smdh's with [Macrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
+The Forwarders title, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - you can create custom .smdh's with [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
 
 You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
 
