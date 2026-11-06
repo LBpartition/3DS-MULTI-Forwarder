@@ -1,4 +1,4 @@
-# 3DS-Forwarder
+# 3DSX-Forwarder
 
 ### Create, Install & Manage Custom Forwarders to Launch .3DSX Homebrew Directly from 3DS Home Menu
 
