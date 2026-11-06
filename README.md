@@ -14,14 +14,14 @@
  
 ## Custom Icons & Banners 
 
-The Forwarders title, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - you can create custom .smdh's with [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
+The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title, publisher & icon - I you want a custom Publisher or Title/name, you can create custom .smdh's with [Marcrobledo's SMDH Creator Website](https://www.marcrobledo.com/smdh-creator/)
 
 You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
 
 - 3dsx - \3ds\fallout2\ `fallout2.3dsx`
 - Icon (48x48) - \3ds\fallout2\ `fallout2.png` - OPTIONAL
 - Banner (256x128) - \3ds\fallout2\ `fallout2.banner.png` - OPTIONAL
-- Custom .smdh -> \3ds\fallout2\ `fallout2.smdh` - OPTIONAL
+- .smdh -> \3ds\fallout2\ `fallout2.smdh` - OPTIONAL
 
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
