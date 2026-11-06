@@ -14,7 +14,7 @@
 
 - Customize the Title/Name and Banner from within the app.
  
-## Custom Icons & Banners 
+## Custom Icons, Banners & Banner Audio
 
 Use .png or .jpg for custom banners and icons, .wav for custom banner audio.
 place them in the same folder as your .3dsx and name them like this:
