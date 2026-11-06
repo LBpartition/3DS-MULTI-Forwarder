@@ -36,7 +36,7 @@ You can use custom icons and banners by placing `.jpg` or `.png` files in the sa
 
 ## Gallery
 <img width="400" height="480" alt="Forwarder-Fallout-Preview" src="https://github.com/user-attachments/assets/171201a4-8e43-4205-a5d8-f2c7e1e47c55" />
-<img width="400" height="480" alt="Forwarder-Fallout-Result" src="https://github.com/user-attachments/assets/7854f348-cdcc-4fb8-aa34-da8cf74025ca" />
+<img width="400" height="480" alt="Forwarder-Fallout2-Result" src="https://github.com/user-attachments/assets/62c9918c-af97-416e-8e9f-885479863d7f" />
 <img width="400" height="480" alt="Forwarder-CMF-Preview" src="https://github.com/user-attachments/assets/f71efe62-c60c-48c9-b575-8b15953e653f" />
-<img width="400" height="480" alt="Forwarder-CMF-Result" src="https://github.com/user-attachments/assets/eed7b843-24f6-47b5-9c34-3c7e54b3dc52" />
+<img width="400" height="480" alt="Forwarder-CMF-Result" src="https://github.com/user-attachments/assets/efecbb47-292b-4dde-aede-b0eef0174cfb" />
 <img width="400" height="480" alt="Manage Installed Forwarders" src="https://github.com/user-attachments/assets/a723796a-5d7c-4223-b243-c4d734e35629" />
