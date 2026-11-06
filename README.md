@@ -20,7 +20,7 @@
  
 ## Custom Icons & Banners 
 
-#### The Forwarders title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title. 
+#### The Forwarders default title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title. 
 
 #### You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
 
