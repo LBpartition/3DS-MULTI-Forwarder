@@ -1,5 +1,5 @@
 /*
- * 3DSX Icon Maker: puts SD-card homebrew on the HOME Menu, right from the 3DS.
+ * 3DSX Forwarder: puts SD-card homebrew on the HOME Menu, right from the 3DS.
  *
  * Pick a .3dsx; the app builds a forwarder CIA for it and installs it.
  * The forwarder starts the Homebrew Launcher loader with the selected path.
@@ -21,8 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <time.h>
 #include <malloc.h>
 #include <zlib.h>
@@ -42,10 +44,11 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.2.2"
+#define ICONMAKER_VERSION "0.3.0"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
-#define APP_DIR     "sdmc:/3ds/3dsx-iconmaker"
+#define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
+#define APP_DIR     "sdmc:/3ds/3DSX-Forwarder"
 #define LAST_DIR    APP_DIR "/iconmaker_dir.txt"
 #define SETTINGS    APP_DIR "/iconmaker.cfg"
 #define TITLE_IDS   APP_DIR "/title_ids.tsv"
@@ -182,7 +185,7 @@ static void tm_log_start(void)
    APT_CheckNew3DS(&n3ds);
    strftime(line, 40, "\n=== %Y-%m-%d %H:%M:%S", localtime(&now));
    snprintf(line + strlen(line), sizeof(line) - strlen(line),
-            "  Icon Maker " ICONMAKER_VERSION ", %s\n", n3ds ? "New 3DS" : "Old 3DS");
+            "  3DSX Forwarder " ICONMAKER_VERSION ", %s\n", n3ds ? "New 3DS" : "Old 3DS");
    tm_log(line);
 }
 
@@ -500,7 +503,8 @@ static void read_icons(void)
          if (!read_title_smdh(ids[i], smdh))
             continue;
          utf16_to_ascii(smdh + 8 + 0x180, 0x40, pub, sizeof(pub));   /* English publisher */
-         if (title_id_recorded(ids[i]) || !strcmp(pub, "3DSX Icon Maker"))
+         if (title_id_recorded(ids[i]) || !strcmp(pub, "3DSX Icon Maker") ||
+             !strcmp(pub, "3DSX Forwarder"))
             sys = SYS_3DSX;
          if (sys < 0)
             continue;
@@ -996,6 +1000,7 @@ typedef struct
    u8 name[256 * 64 * 4];        /* 3D: the name strip under the tile */
    u8 label[128 * 128 * 4];      /* 3D: the icon, on the tile */
    char title[64];
+   char publisher[64];
    int sys;
    bool has_icon_png, has_smdh_icon, has_banner_png;
    bool flat;                    /* a flat banner (its .banner picture, or SELECT), not 3D */
@@ -1015,6 +1020,7 @@ static void make_art(const char *path, const entry *e, game_art *a)
 
    iw = ih = 0;
    snprintf(a->title, sizeof(a->title), "%.*s", n > 63 ? 63 : n, name);
+   a->publisher[0] = 0;
    a->sys = sys;
    has_smdh = read_app_smdh(path, smdh);
    a->has_smdh_icon = has_smdh;
@@ -1027,6 +1033,10 @@ static void make_art(const char *path, const entry *e, game_art *a)
                         a->title, sizeof(a->title));
       if (!a->title[0])
          snprintf(a->title, sizeof(a->title), "%.*s", n > 63 ? 63 : n, name);
+      utf16_to_ascii(smdh + 8 + 0x200 + 0x180, 0x40, a->publisher, sizeof(a->publisher));
+      for (lang = 0; !a->publisher[0] && lang < 16; lang++)
+         utf16_to_ascii(smdh + 8 + (size_t)lang * 0x200 + 0x180, 0x40,
+                        a->publisher, sizeof(a->publisher));
    }
    icon_png = load_picture(path, "", e->pic[0], 128, 128, &iw, &ih, &big);
    a->has_icon_png = icon_png != NULL;
@@ -1353,6 +1363,9 @@ static void blit_565(const u16 *img, int w, int h, int x0, int y0, int scale)
 
 /* what the top screen shows, so the spinner can be drawn over it */
 static u16 top_shown[UI_W * UI_H];
+static u8 top_left_icon[48 * 48 * 4];
+static int top_left_icon_y;
+static bool top_left_icon_active;
 
 /* the canvas to the top screen (400 wide: the canvas in the middle, its
  * edge colours carried out to the sides) */
@@ -1368,6 +1381,35 @@ static void present_top_canvas(void)
       if (cx >= UI_W) cx = UI_W - 1;
       for (y = 0; y < 240; y++)
          *col-- = ui_canvas[y * UI_W + cx];
+   }
+   if (top_left_icon_active)
+   {
+      int ix, iy;
+      for (iy = 0; iy < 56; iy++)
+         for (ix = 0; ix < 56; ix++)
+         {
+            int px = ix < 10 ? 10 : (ix > 45 ? 45 : ix);
+            int py = iy < 10 ? 10 : (iy > 45 ? 45 : iy);
+            int dx = ix - px, dy = iy - py;
+            u16 color = C_PANEL;
+            if ((ix < 10 || ix > 45) && (iy < 10 || iy > 45) && dx * dx + dy * dy > 100)
+               continue;
+            if (ix >= 4 && ix < 52 && iy >= 4 && iy < 52)
+            {
+               const u8 *src = top_left_icon + (((iy - 4) * 48 + ix - 4) * 4);
+               if (src[3])
+               {
+                  int r = ((color >> 11) & 31) * 255 / 31;
+                  int g = ((color >> 5) & 63) * 255 / 63;
+                  int b = (color & 31) * 255 / 31;
+                  r = (src[0] * src[3] + r * (255 - src[3])) / 255;
+                  g = (src[1] * src[3] + g * (255 - src[3])) / 255;
+                  b = (src[2] * src[3] + b * (255 - src[3])) / 255;
+                  color = rgb565(r, g, b);
+               }
+            }
+            fb[(ix + 8) * 240 + 239 - (top_left_icon_y + iy)] = color;
+         }
    }
    GSPGPU_FlushDataCache(fb, 400 * 240 * 2);
    gfxScreenSwapBuffers(GFX_TOP, false);
@@ -1442,36 +1484,23 @@ static int text_lines(const ui_font *f, int x, int y, int dy, const char *s, u16
 static void draw_header(void)
 {
    ui_vgradient(0, 0, UI_W, TAB_Y, C_BG2, C_BG);
-   ui_text(&ui_font_title, 10, 3, "Icon Maker", C_TEXT, 0);
-   ui_rrect(122, 8, 18, 15, 7, C_ORANGE);
-   ui_fill(130, 11, 2, 9, C_TEXT);
-   ui_fill(126, 14, 10, 2, C_TEXT);    /* a "+" badge */
-#ifdef ICONMAKER_TIMING
-   ui_text_right(&ui_font_small, UI_W - 10, 10, "TIMING BUILD   v" ICONMAKER_VERSION, C_WARN);
-#else
-   ui_text_right(&ui_font_small, UI_W - 10, 10, "3DSX APPS   v" ICONMAKER_VERSION, C_DIM);
-#endif
+   ui_text(&ui_font_title, 10, 3, "3DSX Forwarder", C_TEXT, 0);
+   ui_text_right(&ui_font_small, UI_W - 10, 10, "v" ICONMAKER_VERSION, C_DIM);
 }
 
 static void draw_tabs(int tab)
 {
-   static const char *names[2] = { "3DSX Apps", "My icons" };
+   static const char *names[2] = { "Make Forwarder", "Installed" };
    int i, tw = UI_W / 2;
    for (i = 0; i < 2; i++)
    {
       int x = i * tw, on = i == tab;
-      char label[32];
-      const ui_font *f = on ? &ui_font_bold : &ui_font_body;
-      if (i == TAB_ICONS)
-         snprintf(label, sizeof(label), "%s  %d", names[i], nicons);
-      else
-         snprintf(label, sizeof(label), "%s", names[i]);
+      ui_rrect(x + 6, TAB_Y, tw - 12, TAB_H, 10,
+               on ? C_ROW_SEL : UI_RGB(0x1C, 0x20, 0x29));
       if (on)
-      {
-         ui_rrect(x + 6, TAB_Y, tw - 12, TAB_H, 10, C_ROW_SEL);
          ui_fill(x + tw / 2 - 14, TAB_Y + TAB_H - 3, 28, 3, C_ACCENT);
-      }
-      ui_text_vc(f, x + (tw - ui_text_w(f, label)) / 2, TAB_Y, TAB_H - 2, label, on ? C_TEXT : C_DIM, 0);
+      ui_text_vc(&ui_font_body, x + (tw - ui_text_w(&ui_font_body, names[i])) / 2, TAB_Y, TAB_H - 2,
+                 names[i], on ? C_TEXT : C_DIM, 0);
    }
 }
 
@@ -1480,6 +1509,18 @@ static void draw_footer(const char *keys)
    ui_fill(0, FOOT_Y, UI_W, UI_H - FOOT_Y, C_BG2);
    ui_fill(0, FOOT_Y, UI_W, 1, C_PANEL);
    ui_text_vc(&ui_font_small, 10, FOOT_Y, UI_H - FOOT_Y, keys, C_DIM, UI_W - 20);
+}
+
+static void draw_installed_footer(int count)
+{
+   char total[16];
+   const char *keys = count ? "L: Back   X: Uninstall This Forwarder" : "L: Back";
+
+   ui_fill(0, FOOT_Y, UI_W, UI_H - FOOT_Y, C_BG2);
+   ui_fill(0, FOOT_Y, UI_W, 1, C_PANEL);
+   snprintf(total, sizeof(total), "(%d)", count);
+   ui_text_vc(&ui_font_small, 10, FOOT_Y, UI_H - FOOT_Y, keys, C_DIM, UI_W - 48);
+   ui_text_right(&ui_font_small, UI_W - 10, FOOT_Y + 5, total, C_DIM);
 }
 
 static void draw_scrollbar(int n, int top)
@@ -1496,6 +1537,7 @@ static void draw_scrollbar(int n, int top)
 static void draw_bottom(int tab, int sel, int top)
 {
    int i;
+   char keys[128];
    ui_clear(C_BG);
    draw_header();
    draw_tabs(tab);
@@ -1538,18 +1580,22 @@ static void draw_bottom(int tab, int sel, int top)
                     s ? C_TEXT : C_TEXT2, right);
       }
       draw_scrollbar(nentries, top);
-      draw_footer(entries[sel].dir || !nentries ? "A: open   Y: icons for all   R: My icons"
-                                                : "A: make icon   Y: folder   B: up   R: My icons");
+      if (strcmp(cwd, "sdmc:/"))
+         snprintf(keys, sizeof(keys), !nentries || entries[sel].dir
+                  ? "B: Back   A: Open   Y: Install ALL   R: Installed"
+                  : "B: Back   A: Create Forwarder   Y: Install ALL   R: Installed");
+      else
+         snprintf(keys, sizeof(keys), !nentries || entries[sel].dir
+                  ? "A: Open   Y: Install ALL   R: Installed"
+                  : "A: Create Forwarder   Y: Install ALL   R: Installed");
+      draw_footer(keys);
    }
    else
    {
-      char info[64];
-      snprintf(info, sizeof(info), "%d icon%s on the HOME Menu", nicons, nicons == 1 ? "" : "s");
-      ui_text(&ui_font_small, 10, LIST_Y - 18, info, C_FAINT, 0);
       if (!nicons)
       {
          ui_text_center(&ui_font_body, UI_W / 2, 120, "No icons yet", C_DIM);
-         ui_text_center(&ui_font_small, UI_W / 2, 142, "Make one in 3DSX Apps: pick an app, press A", C_FAINT);
+         ui_text_center(&ui_font_small, UI_W / 2, 142, "Pick an app in Make Forwarder and press A", C_FAINT);
       }
       for (i = 0; i < ROWS && top + i < nicons; i++)
       {
@@ -1569,10 +1615,11 @@ static void draw_bottom(int tab, int sel, int top)
          }
          ui_text_vc(&ui_font_body, ROW_X + 36, y, h, ic->name, s ? C_TEXT : C_TEXT2, ROW_W - 90);
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10, y + (h - ui_font_small.ascent) / 2 - 1,
-                       systems[ic->sys].console, ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
+                       ic->sys == SYS_3DSX ? "INSTALLED" : systems[ic->sys].console,
+                       ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
       }
       draw_scrollbar(nicons, top);
-      draw_footer(nicons ? "X: delete icon    L/B: 3DSX Apps" : "L/B: 3DSX Apps");
+      draw_installed_footer(nicons);
    }
 }
 
@@ -1580,69 +1627,44 @@ static void draw_bottom(int tab, int sel, int top)
 
 static void top_bg(void)
 {
+   top_left_icon_active = false;
    ui_vgradient(0, 0, UI_W, UI_H, C_BG2, C_BG);
 }
 
-static void draw_top_game(const game_art *a, bool installed)
+static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, int text_x, int text_y)
 {
-   top_bg();
-   ui_text(&ui_font_small, 32, 6, "HOME Menu preview", C_DIM, 0);
-   ui_rrect_outline(30, 22, 260, 132, 6, 1, C_FAINT);
-   if (!a->flat)
+   char line[144];
+   if (icon_x < 0)
    {
-      /* the 3D banner: the icon on its tile, the name strip under it (half size) */
-      static u8 half[128 * 32 * 4];
-      int x, y, k;
-      for (y = 0; y < 32; y++)
-         for (x = 0; x < 128; x++)
-            for (k = 0; k < 4; k++)
-            {
-               const u8 *p = a->name + ((y * 2) * 256 + x * 2) * 4 + k;
-               half[(y * 128 + x) * 4 + k] = (u8)((p[0] + p[4] + p[256 * 4] + p[256 * 4 + 4]) / 4);
-            }
-      blit_rgba(a->label, 128, 128, 96, 24, 1);
-      blit_rgba(half, 128, 32, 96, 121, 1);
+      memcpy(top_left_icon, a->icon48, sizeof(top_left_icon));
+      top_left_icon_y = icon_y;
+      top_left_icon_active = true;
    }
    else
-      blit_rgba(a->banner, 256, 128, 32, 24, 1);
+   {
+      ui_rrect(icon_x, icon_y, 56, 56, 10, C_PANEL);
+      blit_rgba(a->icon48, 48, 48, icon_x + 4, icon_y + 4, 1);
+   }
+   snprintf(line, sizeof(line), "Title: %s", a->title);
+   ui_text(&ui_font_body, text_x, text_y, line, C_TEXT, UI_W - text_x - 8);
+   snprintf(line, sizeof(line), "Publisher: %s", a->publisher[0] ? a->publisher : "(blank)");
+   ui_text(&ui_font_small, text_x, text_y + 16, line, C_DIM, UI_W - text_x - 8);
+}
 
-   ui_rrect(28, 164, 56, 56, 10, C_PANEL);
-   blit_rgba(a->icon48, 48, 48, 32, 168, 1);
-   ui_text(&ui_font_bold, 96, 164, a->title, C_TEXT, UI_W - 110);
+static void draw_top_game(const game_art *a)
+{
+   top_bg();
+   if (!a->flat)
    {
-      /* a picture too big to use says so, and its size */
-      char banner_big[48];
-      const char *icon_status =
-         a->has_icon_png ? (fit_mode == FIT_CROP ? "Icon: its picture, cropped (X)"
-                                                  : "Icon: its picture, padded (X)")
-         : a->has_smdh_icon ? (a->icon_too_big ? "Icon: too big; using app SMDH"
-                                               : "Icon: from the app's SMDH")
-         : a->icon_too_big ? "Icon: too big; made from name"
-         : "Icon: made from the name";
-      snprintf(banner_big, sizeof(banner_big), a->banner_big[0] ? "Banner: picture too big (%dx%d)" : "Banner: picture too big",
-               a->banner_big[0], a->banner_big[1]);
-      ui_text(&ui_font_small, 96, 186, icon_status,
-              a->icon_too_big ? C_WARN : C_DIM, 0);
-      ui_text(&ui_font_small, 96, 201, a->banner_too_big ? banner_big
-              : a->has_banner_png && a->flat ? (fit_mode == FIT_CROP ? "Banner: its .banner picture, cropped (X)"
-                                                                     : "Banner: its .banner picture, padded (X)")
-              : banner_style == STYLE_3D ? "Banner: 3D, the icon turns (SELECT)"
-              : banner_style == STYLE_CLEAR ? "Banner: no background (SELECT)" : "Banner: blue background (SELECT)",
-              a->banner_too_big ? C_WARN : C_DIM, 0);
+      ui_rrect_outline(30, 0, 260, 196, 6, 1, C_FAINT);
+      blit_rgba(a->label, 128, 128, 96, 2, 1);
+      blit_rgba(a->name, 256, 64, 32, 130, 1);
+      draw_top_game_metadata(a, -1, 176, 62, 198);
+      return;
    }
-   {
-      char opens[80];
-      if (sys_installed[a->sys])
-         snprintf(opens, sizeof(opens), "Homebrew Launcher loader found");
-      else
-         snprintf(opens, sizeof(opens), "Homebrew Launcher loader not installed");
-      ui_text(&ui_font_small, 96, 216, opens, sys_installed[a->sys] ? C_DIM : C_WARN, 0);
-   }
-   if (installed)
-   {
-      ui_rrect(220, 4, 70, 16, 8, UI_RGB(0x1E, 0x3B, 0x2E));
-      ui_text_center(&ui_font_small, 255, 5, "on HOME", C_GOOD);
-   }
+   ui_rrect_outline(30, 24, 260, 132, 6, 1, C_FAINT);
+   blit_rgba(a->banner, 256, 128, 32, 26, 1);
+   draw_top_game_metadata(a, 56, 180, 112, 188);
 }
 
 static void draw_top_folder(const char *name, bool up)
@@ -1659,7 +1681,7 @@ static void draw_top_folder(const char *name, bool up)
 static void draw_top_intro(void)
 {
    top_bg();
-   ui_text_center(&ui_font_title, UI_W / 2, 40, "Icon Maker", C_TEXT);
+   ui_text_center(&ui_font_title, UI_W / 2, 40, "3DSX Forwarder", C_TEXT);
    ui_text_center(&ui_font_small, UI_W / 2, 68, "Puts .3dsx apps on the HOME Menu", C_DIM);
    text_lines(&ui_font_small, 40, 100, 16,
               "Icon: App.png or .jpg beside App.3dsx,\n"
@@ -1677,7 +1699,6 @@ static void draw_top_icon(const icon_entry *ic)
    static u16 big[48 * 48];
    char tid[40];
    top_bg();
-   ui_text(&ui_font_small, 32, 6, "On the HOME Menu", C_DIM, 0);
    ui_rrect(28, 30, 104, 104, 14, C_PANEL);
    if (read_title_smdh(ic->tid, smdh))
    {
@@ -1685,12 +1706,8 @@ static void draw_top_icon(const icon_entry *ic)
       blit_565(big, 48, 48, 32, 34, 2);
    }
    ui_text(&ui_font_bold, 146, 40, ic->name, C_TEXT, UI_W - 160);
-   snprintf(tid, sizeof(tid), "Title %016llX", (unsigned long long)ic->tid);
+   snprintf(tid, sizeof(tid), "Title ID: %016llX", (unsigned long long)ic->tid);
    ui_text(&ui_font_small, 146, 66, tid, C_DIM, 0);
-   {
-      ui_text(&ui_font_small, 146, 82, ".3dsx via Homebrew Launcher", C_DIM, UI_W - 160);
-   }
-   text_lines(&ui_font_small, 146, 106, 15, "X: delete this icon.\nThe .3dsx stays on\nthe SD card.", C_TEXT2, 0);
 }
 
 /* ---- dialogs on the bottom screen ---- */
@@ -1749,6 +1766,159 @@ static bool dialog(const char *title, const char *body, const char *ok, const ch
       }
    }
    return false;
+}
+
+static bool same_file_contents(const char *a, const char *b)
+{
+   FILE *fa = fopen(a, "rb"), *fb = fopen(b, "rb");
+   unsigned char ba[4096], bb[4096];
+   bool same = false;
+
+   if (!fa || !fb)
+      goto done;
+   for (;;)
+   {
+      size_t na = fread(ba, 1, sizeof(ba), fa);
+      size_t nb = fread(bb, 1, sizeof(bb), fb);
+      if (na != nb || memcmp(ba, bb, na))
+         break;
+      if (na < sizeof(ba))
+      {
+         same = !ferror(fa) && !ferror(fb);
+         break;
+      }
+   }
+done:
+   if (fa) fclose(fa);
+   if (fb) fclose(fb);
+   return same;
+}
+
+static bool make_directory(const char *path)
+{
+   struct stat st;
+   if (!mkdir(path, 0777))
+      return true;
+   return !stat(path, &st) && S_ISDIR(st.st_mode);
+}
+
+static bool copy_import_file(const char *src, const char *dst)
+{
+   char tmp[900];
+   FILE *in = NULL, *out = NULL;
+   unsigned char buf[8192];
+   size_t n;
+   bool ok = false;
+
+   if (!access(dst, F_OK))
+      return same_file_contents(src, dst);
+   if (snprintf(tmp, sizeof(tmp), "%s.importing", dst) >= (int)sizeof(tmp))
+      return false;
+   remove(tmp);
+   in = fopen(src, "rb");
+   out = fopen(tmp, "wb");
+   if (!in || !out)
+      goto done;
+   while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
+      if (fwrite(buf, 1, n, out) != n)
+         goto done;
+   if (ferror(in) || fflush(out) || ferror(out))
+      goto done;
+   if (fclose(out))
+   {
+      out = NULL;
+      goto done;
+   }
+   out = NULL;
+   if (!fclose(in))
+   {
+      in = NULL;
+      if (same_file_contents(src, tmp) && !rename(tmp, dst))
+         ok = true;
+   }
+done:
+   if (in) fclose(in);
+   if (out) fclose(out);
+   if (!ok) remove(tmp);
+   return ok;
+}
+
+static bool copy_import_tree(const char *src, const char *dst, bool old_root)
+{
+   DIR *dir;
+   struct dirent *entry;
+   bool ok = true;
+
+   if (!make_directory(dst))
+      return false;
+   dir = opendir(src);
+   if (!dir)
+      return false;
+   while ((entry = readdir(dir)))
+   {
+      char from[900], to[900];
+      struct stat st;
+
+      if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+         continue;
+      if (snprintf(from, sizeof(from), "%s/%s", src, entry->d_name) >= (int)sizeof(from) ||
+          snprintf(to, sizeof(to), "%s/%s", dst, entry->d_name) >= (int)sizeof(to) ||
+          stat(from, &st))
+      {
+         ok = false;
+         break;
+      }
+      if (S_ISDIR(st.st_mode))
+         ok = copy_import_tree(from, to, false);
+      else
+      {
+         if (old_root && (!strcasecmp(entry->d_name, "3dsx-iconmaker.3dsx") ||
+                          !strcasecmp(entry->d_name, "3dsx-iconmaker.smdh")))
+            continue;
+         ok = copy_import_file(from, to);
+      }
+      if (!ok)
+         break;
+   }
+   closedir(dir);
+   return ok;
+}
+
+static bool remove_import_tree(const char *path)
+{
+   DIR *dir = opendir(path);
+   struct dirent *entry;
+   bool ok = true;
+
+   if (!dir)
+      return false;
+   while ((entry = readdir(dir)))
+   {
+      char child[900];
+      struct stat st;
+      if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+         continue;
+      if (snprintf(child, sizeof(child), "%s/%s", path, entry->d_name) >= (int)sizeof(child) ||
+          stat(child, &st) || (S_ISDIR(st.st_mode) ? !remove_import_tree(child) : remove(child)))
+      {
+         ok = false;
+         break;
+      }
+   }
+   closedir(dir);
+   return ok && !rmdir(path);
+}
+
+static int import_old_database(void)
+{
+   struct stat st;
+
+   if (stat(OLD_APP_DIR, &st))
+      return errno == ENOENT ? 0 : -1;
+   if (!S_ISDIR(st.st_mode) || !make_directory("sdmc:/3ds") ||
+       !copy_import_tree(OLD_APP_DIR, APP_DIR, true))
+      return -1;
+   return remove_import_tree(OLD_APP_DIR) ? 1 : -1;
 }
 
 static void progress_keys(const char *title, const char *line, int done, int n, const char *keys)
@@ -2119,8 +2289,8 @@ static void delete_icon(const icon_entry *ic)
 {
    char body[200];
    Result r;
-   snprintf(body, sizeof(body), "%.60s\ncomes off the HOME Menu.\nThe .3dsx stays on the SD card.", ic->name);
-   if (!dialog("Delete this icon?", body, "Delete", "Cancel", UI_RGB(0xC8, 0x45, 0x45)))
+   snprintf(body, sizeof(body), "%.60s\nThe .3dsx stays on the SD card.", ic->name);
+   if (!dialog("Uninstall this forwarder?", body, "Uninstall", "Cancel", UI_RGB(0xC8, 0x45, 0x45)))
       return;
    r = AM_DeleteTitle(MEDIATYPE_SD, ic->tid);
    if (R_SUCCEEDED(r))
@@ -2406,7 +2576,7 @@ static bool draw_top_for(int tab, int sel, bool am)
       top_bg();
       ui_text_center(&ui_font_title, UI_W / 2, 70, "Can't install", C_BAD);
       text_lines(&ui_font_small, 40, 110, 16, "No access to the install service.\n"
-                 "Start Icon Maker from the HOME Menu\n(install its CIA) or the Homebrew\n"
+                 "Start 3DSX Forwarder from the HOME Menu\n(install its CIA) or the Homebrew\n"
                  "Launcher on Luma3DS.", C_TEXT2, UI_W - 60);
    }
    else if (tab == TAB_ICONS)
@@ -2414,7 +2584,7 @@ static bool draw_top_for(int tab, int sel, bool am)
       if (nicons)
          draw_top_icon(&icons[sel]);
       else
-         draw_top_intro();
+         top_bg();
    }
    else if (!nentries)
       draw_top_intro();
@@ -2451,7 +2621,7 @@ static bool draw_top_for(int tab, int sel, bool am)
             return false;
          }
       }
-      draw_top_game(a, entries[sel].has_icon);
+      draw_top_game(a);
       tm_mark("draw the top screen");
       tm_report(entries[sel].name);
    }
@@ -2463,11 +2633,38 @@ int main(void)
 {
    int tab = TAB_GAMES, sel = 0, top = 0, gsel = 0, gtop = 0;
    int top_wait = 0;           /* frames until the top screen is redrawn */
+   int import_result;
+   struct stat old_data;
    bool am, redraw = true, romfs;
 
    osSetSpeedupEnable(true);           /* New 3DS: the faster CPU and its L2 cache */
    gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
    romfs = R_SUCCEEDED(romfsInit());
+   if (!stat(OLD_APP_DIR, &old_data))
+   {
+      dialog("Importing Old v0.2.2 Database",
+             "Move saved settings and title records to the new app folder.", "Import", NULL, C_ACCENT);
+      import_result = import_old_database();
+      if (import_result < 0)
+      {
+         dialog("Import failed", "The remaining old-folder data is preserved. Check SD space or file conflicts, then try again.",
+                "OK", NULL, C_BAD);
+         if (romfs) romfsExit();
+         gfxExit();
+         return 1;
+      }
+      if (import_result > 0)
+         dialog("Import complete", "Saved data is ready. Starting with the imported database now.",
+                "Continue", NULL, UI_RGB(0x2E, 0x8B, 0x57));
+   }
+   else if (errno != ENOENT)
+   {
+      dialog("Could not check old data", "The old database folder could not be checked. The app will not change any data.",
+             "OK", NULL, C_BAD);
+      if (romfs) romfsExit();
+      gfxExit();
+      return 1;
+   }
    mkdir("sdmc:/3ds", 0777);
    mkdir(APP_DIR, 0777);
    am = R_SUCCEEDED(amInit());

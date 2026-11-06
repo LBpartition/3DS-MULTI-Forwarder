@@ -12,13 +12,13 @@ endif
 APP_ICON := $(TOPDIR)/icon.png
 include $(DEVKITARM)/3ds_rules
 
-TARGET      := 3dsx-iconmaker
+TARGET      := 3DSX-Forwarder
 BUILD       := build
 SOURCES     := source
 INCLUDES    := source
 ROMFS       := romfs
-APP_TITLE   := 3DSX Icon Maker
-APP_AUTHOR  := 3DSX Icon Maker contributors
+APP_TITLE   := 3DSX Forwarder
+APP_AUTHOR  := 3DSX Forwarder contributors
 APP_DESCRIPTION := Create HOME Menu forwarders for 3DSX apps
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
