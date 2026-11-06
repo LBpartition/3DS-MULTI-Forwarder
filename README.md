@@ -26,7 +26,7 @@ Place them in the same folder as your .3dsx and name them like this:
 - \3ds\fallout2\ `fallout2.banner.wav` - Banner Audio
 
 - Check the Installed Tab to list all of your installed .3dsx Forwarders - you can uninstall them from here too.
-- 
+
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
 - [OMORI](https://github.com/meetox80/omori)
