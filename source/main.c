@@ -44,7 +44,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.3.1"
+#define ICONMAKER_VERSION "0.3.2"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
@@ -1483,7 +1483,7 @@ static int text_lines(const ui_font *f, int x, int y, int dy, const char *s, u16
 static void draw_header(void)
 {
    ui_vgradient(0, 0, UI_W, TAB_Y, C_BG2, C_BG);
-   ui_text(&ui_font_title, 10, 3, "3DSX Forwarder", C_TEXT, 0);
+   ui_text_center(&ui_font_title, UI_W / 2, 3, "3DSX Forwarder", C_TEXT);
    ui_text_right(&ui_font_small, UI_W - 10, 10, "v" ICONMAKER_VERSION, C_DIM);
 }
 
@@ -1545,7 +1545,7 @@ static void draw_bottom(int tab, int sel, int top)
       char info[64];
       static const char *const style_short[STYLE_COUNT] = { "blue", "no background", "3D" };
       int iw;
-      snprintf(info, sizeof(info), "%d app%s   SELECT: %s   X: %s", ngames, ngames == 1 ? "" : "s",
+      snprintf(info, sizeof(info), "SELECT: %s   X: %s",
                style_short[banner_style], fit_key[fit_mode]);
       iw = ui_text_w(&ui_font_small, info);
       ui_text(&ui_font_small, 10, LIST_Y - 18, cwd + 5, C_FAINT, UI_W - 30 - iw);
@@ -1569,10 +1569,10 @@ static void draw_bottom(int tab, int sel, int top)
             icon_cart(ROW_X + 10, y + 3, s ? C_ACCENT : C_FAINT);
          if (e->has_icon)
          {
-            /* a green "on HOME" pill */
-            int pw = ui_text_w(&ui_font_small, "on HOME") + 14;
+            /* a green installed pill */
+            int pw = ui_text_w(&ui_font_small, "INSTALLED") + 14;
             ui_rrect(ROW_X + ROW_W - pw - 8, y + 4, pw, h - 8, (h - 8) / 2, UI_RGB(0x1E, 0x3B, 0x2E));
-            ui_text_vc(&ui_font_small, ROW_X + ROW_W - pw - 1, y + 4, h - 8, "on HOME", C_GOOD, 0);
+            ui_text_vc(&ui_font_small, ROW_X + ROW_W - pw - 1, y + 4, h - 8, "INSTALLED", C_GOOD, 0);
             right = ROW_W - pw - 50;
          }
          ui_text_vc(&ui_font_body, ROW_X + 34, y, h, strcmp(e->name, "..") ? e->name : ".. (up a folder)",
@@ -1633,6 +1633,7 @@ static void top_bg(void)
 static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, int text_x, int text_y)
 {
    char line[144];
+   int text_y_next = text_y;
    if (icon_x < 0)
    {
       memcpy(top_left_icon, a->icon48, sizeof(top_left_icon));
@@ -1644,10 +1645,17 @@ static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, in
       ui_rrect(icon_x, icon_y, 56, 56, 10, C_PANEL);
       blit_rgba(a->icon48, 48, 48, icon_x + 4, icon_y + 4, 1);
    }
-   snprintf(line, sizeof(line), "Title: %s", a->title);
-   ui_text(&ui_font_body, text_x, text_y, line, C_TEXT, UI_W - text_x - 8);
-   snprintf(line, sizeof(line), "Publisher: %s", a->publisher[0] ? a->publisher : "(blank)");
-   ui_text(&ui_font_small, text_x, text_y + 16, line, C_DIM, UI_W - text_x - 8);
+   if (a->title[0])
+   {
+      snprintf(line, sizeof(line), "Title: %s", a->title);
+      ui_text(&ui_font_body, text_x, text_y, line, C_TEXT, UI_W - text_x - 8);
+      text_y_next += 16;
+   }
+   if (a->publisher[0])
+   {
+      snprintf(line, sizeof(line), "Publisher: %s", a->publisher);
+      ui_text(&ui_font_small, text_x, text_y_next, line, C_DIM, UI_W - text_x - 8);
+   }
 }
 
 static void draw_top_game(const game_art *a)
