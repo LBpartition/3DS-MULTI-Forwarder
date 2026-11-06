@@ -22,3 +22,7 @@
 - A few small UI tweaks
 - Allow entering custom Titles/Names/Publishers within the app
 ###### *Custom Icons/Banners still need `.png` or `.jpg` files on your SD card, see*: [ReadMe-Custom Icons & Banners](https://github.com/LBpartition/3DSX-Forwarder/blob/main/README.md#custom-icons--banners) *for more info*
+
+### v0.3.5
+- UI Improvements
+- Add support for custom Banner Audio, see [ReadMe - Custom Icons, Banners & Banner Audio](https://github.com/LBpartition/3DSX-Forwarder/tree/main#custom-icons-banners--banner-audio) for more info
