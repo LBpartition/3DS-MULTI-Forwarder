@@ -2,32 +2,30 @@
 
 ### Create, Install & Manage Custom Forwarders to Launch .3DSX Homebrew Directly from 3DS Home Menu
 
-## How to Use:
-1. Download the [Latest 3DSX-Forwarder.zip](https://github.com/LBpartition/3DSX-Forwarder/releases/latest)
-2. Extract it and copy the `3ds` folder to the root of your 3DS SD Card
-3. Load `3DSX Forwarder` from Homebrew Launcher
-4. Go to the .3dsx file you want to forward
-5. Wait a few seconds for the banner, icon and title to load on the top screen 
-- Press `Select` to cycle through some different banner styles.
-6. Press A and choose `Make Forwarder`, 
-7. It will ask if you want to enter a custom Title/Name and Publisher,
-- `A` = Yes - `B` = NO
-- If `Yes` - The 3DS keyboard pops up and you can type in the name you want,
-- If `No` - The embedded/preview title/name/publisher will be used instead
-8. You can now launch your .3dsx directly from the 3DS Home Menu
+| List Installed Forwarders | Preview Before Installing | Installed Forwarders | 
+|---|---|---| 
+| <img width="400" height="480" alt="2026-11-07_09-27-22 920_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/8458bd85-474b-4a3b-bebc-0c9d8b29be29" /> | <img width="400" height="480" alt="2026-11-07_09-16-28 751_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/e89c5152-7270-44a2-9faa-dc48cf61a2f4" /> | <img width="400" height="480" alt="2026-11-07_09-30-41 682_cmb" src="https://github.com/user-attachments/assets/b0d2e996-59d6-4590-b701-2388e8ee964b" />
+|  | <img width="400" height="480" alt="2026-11-07_09-25-40 412_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/db5fa9c3-890f-483a-9f7d-c537291ca5a5" /> | <img width="400" height="480" alt="2026-11-07_09-48-48 440_cmb" src="https://github.com/user-attachments/assets/6410c66b-8da8-45b6-a309-5b186264101f" />|
 
-- Check the Installed Tab to find a list of all your installed .3dsx Forwarders (you can uninstall them from here too)
+## How to Use:
+1. Download the [Latest 3DSX-Forwarder.zip](https://github.com/LBpartition/3DSX-Forwarder/releases/latest),
+2. Extract it and copy it to your 3DS SD card.
+3. Launch `3DSX Forwarder` from the Homebrew Launcher, choose a 3dsx file to forward. 
+
+- Customize the Title/Name and Banner from within the app.
  
 ## Custom Icons & Banners 
 
-#### The Forwarders default title/name, publisher, icon & banner are created from the .3dsx/.smdh's embedded title. 
-
-#### You can use custom icons and banners by placing .jpg or .png files in the same folder as the .3dsx you want to forward, name them like this: 
+Use .png or .jpg for custom banners and icons, .wav for custom banner audio.
+place them in the same folder as your .3dsx and name them like this:
 
 - \3ds\fallout2\ `fallout2.3dsx` - 3dsx
 - \3ds\fallout2\ `fallout2.png` - Icon (48x48)
 - \3ds\fallout2\ `fallout2.banner.png` - Banner (256x128)
+- \3ds\fallout2\ `fallout2.banner.wav` - Banner Audio
 
+- Check the Installed Tab to list all of your installed .3dsx Forwarders - you can uninstall them from here too.
+- 
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
 - [OMORI](https://github.com/meetox80/omori)
@@ -42,12 +40,6 @@
 - bheppe - Based on [gpSP-3D's IconMaker](https://github.com/bheppe/gpsp-3d)
 - Fadgiras - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
 - Claude - its vibecoded
-
-## Gallery
-| List Installed Forwarders | Preview Before Installing | Installed Forwarders | 
-|---|---|---| 
-| <img width="400" height="480" alt="INSTALLED" src="https://github.com/user-attachments/assets/cdf06527-aee0-482c-ab16-69b7e07be10c" /> | <img width="400" height="480" alt="Forwarder-Fallout-Preview" src="https://github.com/user-attachments/assets/171201a4-8e43-4205-a5d8-f2c7e1e47c55" /> | <img width="400" height="480" alt="Forwarder-Fallout2-Result" src="https://github.com/user-attachments/assets/62c9918c-af97-416e-8e9f-885479863d7f" /> |
-| | <img width="400" height="480" alt="Forwarder-CMF-Preview" src="https://github.com/user-attachments/assets/f71efe62-c60c-48c9-b575-8b15953e653f" /> | <img width="400" height="480" alt="Forwarder-CMF-Result" src="https://github.com/user-attachments/assets/efecbb47-292b-4dde-aede-b0eef0174cfb" /> |
 
 
 
