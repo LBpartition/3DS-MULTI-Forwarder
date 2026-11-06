@@ -12,12 +12,13 @@
 2. Extract it and copy it to your 3DS SD card.
 3. Launch `3DSX Forwarder` from the Homebrew Launcher, choose a 3dsx file to forward. 
 
-- Customize the Title/Name and Banner from within the app.
+- Customize the Title/Name and Banner Style from within the app.
  
 ## Custom Icons, Banners & Banner Audio
 
 Use .png or .jpg for custom banners and icons, .wav for custom banner audio.
-place them in the same folder as your .3dsx and name them like this:
+
+Place them in the same folder as your .3dsx and name them like this:
 
 - \3ds\fallout2\ `fallout2.3dsx` - 3dsx
 - \3ds\fallout2\ `fallout2.png` - Icon (48x48)
