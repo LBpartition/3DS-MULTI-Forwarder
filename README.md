@@ -1,31 +1,32 @@
 # 3DSX-Forwarder
 
-### Create, Install & Manage Custom Forwarders to Launch .3DSX Homebrew Directly from 3DS Home Menu
+### Create, Install & Manage Custom 3DSX Forwarders
+- Custom Title/Names for Forwarders
+- Preview Banner & Title on top screen
+- 3 Different Banner Styles - Switch between them with `Select`
+- Create your own custom Icons and Banners with `.png`/`.jpg` & `.wav` files
 
-| List Installed Forwarders | Preview Before Installing | Installed Forwarders | 
+| Manage Installed Forwarders | Preview Before Installing | Installed Forwarders | 
 |---|---|---| 
 | <img width="400" height="480" alt="2026-11-07_09-27-22 920_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/8458bd85-474b-4a3b-bebc-0c9d8b29be29" /> | <img width="400" height="480" alt="2026-11-07_09-16-16 470_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/b04eaa54-3f16-4b26-ac27-3e05c87e711f" /> | <img width="400" height="480" alt="2026-11-07_09-30-41 682_cmb" src="https://github.com/user-attachments/assets/b0d2e996-59d6-4590-b701-2388e8ee964b" />
 |  | <img width="400" height="480" alt="2026-11-07_09-25-40 412_000400000D921E00_cmb" src="https://github.com/user-attachments/assets/db5fa9c3-890f-483a-9f7d-c537291ca5a5" /> | <img width="400" height="480" alt="2026-11-07_09-48-48 440_cmb" src="https://github.com/user-attachments/assets/6410c66b-8da8-45b6-a309-5b186264101f" />|
 
 ## How to Use:
 1. Download the [Latest 3DSX-Forwarder.zip](https://github.com/LBpartition/3DSX-Forwarder/releases/latest),
-2. Extract it and copy it to your 3DS SD card.
-3. Launch `3DSX Forwarder` from the Homebrew Launcher, choose a 3dsx file to forward. 
-
-- Customize the Title/Name and Banner Style from within the app.
+2. Extract the zip and copy the `3ds` folder to your 3DS SD card.
+3. Launch `3DSX Forwarder` from the Homebrew Launcher & 
+4. Choose a 3dsx file to forward & Press `A` to create the forwarder
  
 ## Custom Icons, Banners & Banner Audio
 
-Use .png or .jpg for custom banners and icons, .wav for custom banner audio.
+#### Not a fan of the included banner styles? - Create your own! 
 
-Place them in the same folder as your .3dsx and name them like this:
+Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name them like this:
 
-- \3ds\fallout2\ `fallout2.3dsx` - 3dsx
-- \3ds\fallout2\ `fallout2.png` - Icon (48x48)
-- \3ds\fallout2\ `fallout2.banner.png` - Banner (256x128)
-- \3ds\fallout2\ `fallout2.banner.wav` - Banner Audio
-
-- Check the Installed Tab to list all of your installed .3dsx Forwarders - you can uninstall them from here too.
+- `fallout2.3dsx` - 3dsx
+- `fallout2.png` - Icon (48x48)
+- `fallout2.banner.png` - Banner (256x128)
+- `fallout2.banner.wav` - Banner Audio (*Banners are silent if no .wav file is found*)
 
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
@@ -41,9 +42,3 @@ Place them in the same folder as your .3dsx and name them like this:
 - bheppe - Based on [gpSP-3D's IconMaker](https://github.com/bheppe/gpsp-3d)
 - Fadgiras - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
 - Claude - its vibecoded
-
-
-
-
-
-
