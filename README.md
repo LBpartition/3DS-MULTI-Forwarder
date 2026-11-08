@@ -26,7 +26,7 @@ Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name 
 - `fallout2.3dsx` - 3dsx
 - `fallout2.png` - Icon (48x48)
 - `fallout2.banner.png` - Banner (256x128)
-- `fallout2.banner.wav` - Banner Audio (*Banners are silent if no .wav file is found*)
+- `fallout2.banner.wav` - Banner Audio (*Banners are silent if no .banner.wav file is found*)
 
 ## Tested on New 3DS & Old 3DS XL with:
 - [Fallout2](https://github.com/MrHuu/fallout2-ce-3ds)
