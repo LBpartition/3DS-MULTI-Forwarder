@@ -30,6 +30,7 @@ Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name 
 - `fallout2.banner.png` - Banner (256x128)
 - `fallout2.banner.wav` - Banner Audio
 
+--- 
    - Banner Audio limit: 3 seconds max
    - Banners are silent if no .banner.wav file is found
 
