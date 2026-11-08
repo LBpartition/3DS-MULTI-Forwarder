@@ -1,7 +1,7 @@
 # 3DSX-Forwarder
 
 ### Create, Install & Manage Custom 3DSX Forwarders
-- Custom Title/Names for Forwarders
+- Custom Title Names & Publisher Names for Forwarders
 - Preview Banner & Title on top screen
 - 3 Different Banner Styles - Switch between them with `Select`
 - Create your own custom Icons and Banners with `.png`/`.jpg` & `.wav` files
@@ -16,7 +16,9 @@
 2. Extract the zip and copy the `3ds` folder to your 3DS SD card.
 3. Launch `3DSX Forwarder` from the Homebrew Launcher
 4. Choose a 3dsx file & press `A` to create the forwarder
- 
+- Preview Banner & Title on the Top Screen before creating the Forwarder
+- 3 Different Banner Styles: Switch between them with `Select`
+
 ## Custom Icons, Banners & Banner Audio
 
 #### Not a fan of the included banner styles? - Create your own! 
