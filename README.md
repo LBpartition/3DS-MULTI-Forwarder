@@ -35,7 +35,7 @@ Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name 
    - Banners are silent if no .banner.wav file is found
 
 ## Tested on New 3DS & Old 3DS XL with:
-- [Fallout2](github.com/LBpartition/fallout2-ce-3ds/releases/tag/pre-alpha)
+- [Fallout2](http://github.com/LBpartition/fallout2-ce-3ds/releases/latest)
 - [OMORI](https://github.com/meetox80/omori)
 - [Abes Oddysse](https://gbatemp.net/download/oddworld-abes-oddysse-3ds-native-port.40053/)
 - [Abes Exodus](https://gbatemp.net/download/oddworld-abes-exoddus-r-e-l-i-v-e-native-port.40052/)
