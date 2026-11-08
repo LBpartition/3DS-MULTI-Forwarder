@@ -1,7 +1,7 @@
 # 3DSX-Forwarder
 
 ### Create, Install & Manage Custom 3DSX Forwarders
-- Custom Title Names & Publisher Names for Forwarders
+- Custom Title Names & Publisher Names
 - Preview Banner & Title on top screen
 - 3 Different Banner Styles - Switch between them with `Select`
 - Create your own custom Icons and Banners with `.png`/`.jpg` & `.wav` files
