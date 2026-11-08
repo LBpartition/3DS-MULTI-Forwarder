@@ -15,7 +15,7 @@
 1. Download the [Latest 3DSX-Forwarder.zip](https://github.com/LBpartition/3DSX-Forwarder/releases/latest),
 2. Extract the zip and copy the `3ds` folder to your 3DS SD card.
 3. Launch `3DSX Forwarder` from the Homebrew Launcher
-4. Choose a 3dsx file & press `A` to create the forwarder
+4. Choose a 3dsx file - Press `A` and go through the prompts to create the forwarder (*Custom Title? & Custom Publisher? - A = Yes, B = No*)
 - Preview Banner & Title on the Top Screen before creating the Forwarder
 - 3 Different Banner Styles: Switch between them with `Select`
 
