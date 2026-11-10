@@ -13,7 +13,7 @@
 ### Features
 - Preview on top screen before creating
 - Custom Title Names & Publisher Names
-- [Custom Icons, Banners & Banner Audio support](https://github.com/LBpartition/3DS-MULTI-Forwarder/edit/main/ReadMe.md#custom-icons-banners--banner-audio)
+- [Custom Icons, Banners & Banner Audio support](https://github.com/LBpartition/3DS-MULTI-Forwarder/tree/main#custom-icons-banners--banner-audio)
 - Manage your installed Forwarders, with the option to uninstall
 
 **3DSX / GBA / SNES**
@@ -39,7 +39,7 @@
   - 3 Different Banner Styles: Switch between them with `Select`
     - 4th Banner style *Custom* is shown automatically if custom banner files are found
     - NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
-      - See [Custom Icons, Banners & Banner Audio](https://github.com/LBpartition/3DS-MULTI-Forwarder/edit/main/ReadMe.md#custom-icons-banners--banner-audio) for more info
+      - See [Custom Icons, Banners & Banner Audio]((https://github.com/LBpartition/3DS-MULTI-Forwarder/tree/main#custom-icons-banners--banner-audio)) for more info
 ## Gallery:
 
 |  |  |
