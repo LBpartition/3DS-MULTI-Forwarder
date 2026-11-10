@@ -14,7 +14,7 @@
 - Preview on top screen before creating
 - Custom Title Names & Publisher Names
 - [Custom Icons, Banners & Banner Audio support](https://github.com/LBpartition/3DS-MULTI-Forwarder/edit/main/ReadMe.md#custom-icons-banners--banner-audio)
-- Manage your installed Forwarders, with the option to uninstall them
+- Manage your installed Forwarders, with the option to uninstall
 
 **3DSX / GBA / SNES**
 - 3 Different Banner Styles - Switch between them with `Select`
@@ -22,8 +22,9 @@
 
 **NDS**
 - Create your own custom Icons (also used for NDS banners) with `.bmp` files
+  - [Create them with NDS Custom Icon Converter](https://lbpartition.github.io/3DS-MULTI-Forwarder/NDS-Icon-Converter.html) 
 - Manage NDS Forwarders / installed TWL Titles
-  - Keep track of the 3DS's limit of 40 TWL Titles, with the option to uninstall NDS Forwarders
+  - Keep track of the 3DS's limit of 40 TWL Titles, with the option to uninstall
 ---
 
 ## How to Use:
@@ -58,7 +59,7 @@
 
 #### Not a fan of the included banner styles? - Create your own! 
 
-##### 3DSX / GBA / SNES
+### 3DSX / GBA / SNES
 - Place your `.png`/`.jpg` & `.wav` files in the same folder as whatever you're forwarding & name them like this:
   - *Example:*
     - `fallout2.3dsx` - 3dsx / .nds / .gba / .*etc*
@@ -69,15 +70,15 @@
 - **Note:** Banners are silent if no `*.banner.wav` file is found.
 - **Note:** Icons and Banners can be `*.png` OR `*.jpg`. (& `*.banner.png` OR `*.banner.jpg`)
 
-##### NDS Custom Icons
+### NDS Custom Icons
 
 - **Note:** NDS Forwarders only have 2 banner styles, (Custom & Default.) No custom Banner Audio.
-  - Place your `.bmp` files in the same folder as your .nds rom & name them like this:
+  - Place your `.bmp` file in the same folder as your .nds rom & name it like this:
     - `Pokemon - Storm Silver.nds` - .nds
     - `Pokemon - Storm Silver.bmp` - Icon (32x32) (Also used for NDS Banners)
 
 - **Note:** NDS Custom Icon Requirements:
-  - `.bmp` only.
+  - `.bmp` only. - [Create them with NDS Custom Icon Converter](https://lbpartition.github.io/3DS-MULTI-Forwarder/NDS-Icon-Converter.html)
     - **4 bits per pixel**: indexed/paletted, up to 16 colors.
     - **40-byte `BITMAPINFOHEADER`** and **BI_RGB compression** (`0`).
     - At most 16 palette entries. If the palette count is zero, the code assumes 16.
