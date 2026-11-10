@@ -21,9 +21,9 @@ GBA and SNES forwarders use Icon Maker's path-derived title IDs when available, 
 
 1. Copy `MULTI-Forwarder.3dsx` and `MULTI-Forwarder.smdh` into `sdmc:/3ds/MULTI-Forwarder/`.
 2. Launch **MULTI-FORWARDER** from the Homebrew Launcher.
-3. Browse to a supported game and select it to preview and create its forwarder. Install the required target emulator CIA first.
+3. Browse to a supported game and select it to preview and create its forwarder. Install the required target emulator CIA first. Custom titles may use one or two lines; those title lines are rendered on the banner. A custom publisher is one line of HOME Menu metadata and is not drawn on the banner.
 4. Use **Installed** to view or remove app-created 3DSX/GBA/SNES forwarders. Press **Y** to cycle `ALL > 3DSX > GBA > SNES > ALL`. Selecting an entry shows its title ID; 3DSX entries identify **3DSX Homebrew Launcher** on the top screen.
-5. Use **TWL** to view installed TWL/DSiWare titles from system memory and microSD; the list reads each title's banner name and icon from its installation media, titles created by Multi-Forwarder are labeled **NDS**, and other titles are labeled **TWL**. Selecting a title shows its ID and identifies app-created NDS forwarders as **Twilight Menu** or other user TWL titles as **DSiWare**.
+5. Use **TWL** to view installed TWL/DSiWare titles from system memory and microSD; the list reads each title's banner name and icon from its installation media, titles created by Multi-Forwarder are labeled **NDS**, and other titles are labeled **TWL**. Selecting a title shows its ID and identifies app-created NDS forwarders as **Twilight Menu** or other user TWL titles as **DSiWare**. Press **X** and confirm to uninstall any listed user TWL title; an NDS forwarder's ROM file remains on the SD card.
 
 **L/R** switches tabs. Prompts use the D-pad to select an option, **A** to confirm, and **B** to cancel. **SELECT** cycles banner styles for 3DSX/GBA/SNES previews; for NDS it switches between the default and custom icon when a valid custom BMP exists.
 
