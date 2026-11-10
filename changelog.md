@@ -47,3 +47,6 @@
 - UI tweaks
 - Bug Fixes (Banners for Custom Title Names using two lines.)
 - Allow Uninstalling **ALL** listed TWL Titles
+
+### Extra
+- [NDS Custom Icon Converter Site](https://lbpartition.github.io/3DS-MULTI-Forwarder/NDS-Icon-Converter.html) - Convert your `.png` / `.jpg` / `.bmp` files to NDS Custom Icon `.bmp`'s
