@@ -1933,13 +1933,69 @@ static int make_nds_forwarder(const char *path, const char *custom_title,
    return 0;
 }
 
+static int load_banner_cwav(const char *path, size_t max_cwav_size,
+                            u8 **cwav, size_t *cwav_size,
+                            char *err, int errlen)
+{
+   const char *extension = strrchr(path, '.');
+   char wav_path[800];
+   size_t stem_size;
+
+   *cwav = NULL;
+   *cwav_size = 0;
+   if (!extension)
+      return 1;
+   stem_size = (size_t)(extension - path);
+   if (stem_size > sizeof(wav_path) - sizeof(".banner.wav"))
+   {
+      snprintf(err, errlen, "The banner audio path is too long.");
+      return -1;
+   }
+   memcpy(wav_path, path, stem_size);
+   memcpy(wav_path + stem_size, ".banner.wav", sizeof(".banner.wav"));
+   return wav_to_cwav_file(wav_path, max_cwav_size, cwav, cwav_size,
+                           err, errlen);
+}
+
+static int add_banner_cwav(u8 *banner, size_t banner_capacity,
+                           size_t *banner_size, const char *path,
+                           char *err, int errlen)
+{
+   u8 *cwav = NULL;
+   size_t cwav_size = 0;
+   uint32_t audio_capacity, new_size;
+   int result;
+
+   if (banner_capacity > UINT32_MAX ||
+       banner_sound_capacity(banner, (uint32_t)banner_capacity,
+                             &audio_capacity, err, errlen))
+      return -1;
+   result = load_banner_cwav(path, audio_capacity, &cwav, &cwav_size,
+                             err, errlen);
+   if (result)
+      return result;
+   if (cwav_size > UINT32_MAX)
+   {
+      free(cwav);
+      snprintf(err, errlen, "The custom banner sound is too large.");
+      return -1;
+   }
+   result = banner_set_sound(banner, (uint32_t)banner_capacity, cwav,
+                             (uint32_t)cwav_size, &new_size, err, errlen);
+   free(cwav);
+   if (result)
+      return -1;
+   *banner_size = new_size;
+   return 0;
+}
+
 static int make_rom_icon(const char *path, const entry *e,
                          const char *custom_title, const char *custom_publisher,
                          char *err, int errlen)
 {
    static game_art art;
    static u8 *smdh;
-   char template_path[64], wav_path[800], long_title[128];
+   char template_path[64], long_title[128];
    FILE *f = NULL;
    u8 *cia = NULL, *cwav = NULL;
    long cia_len;
@@ -1952,7 +2008,6 @@ static int make_rom_icon(const char *path, const entry *e,
    fwdcia_params params;
    Result install_result;
    u8 *template_banner;
-   const char *dot = strrchr(path, '.');
 
    make_art(path, e, &art);
    if (custom_title && custom_title[0])
@@ -2004,36 +2059,32 @@ static int make_rom_icon(const char *path, const entry *e,
    params.banner = art.flat ? art.banner : art.name;
    params.label = art.flat ? NULL : art.label;
 
-   if (dot && (size_t)(dot - path) + sizeof(".banner.wav") <= sizeof(wav_path))
+   template_banner = cia_banner_data(&parsed, &banner_reserved);
+   if (!template_banner || banner_reserved > UINT32_MAX ||
+       banner_sound_capacity(template_banner, (uint32_t)banner_reserved,
+                             &audio_capacity, err, errlen))
    {
-      snprintf(wav_path, sizeof(wav_path), "%.*s.banner.wav", (int)(dot - path), path);
-      template_banner = cia_banner_data(&parsed, &banner_reserved);
-      if (!template_banner || banner_reserved > UINT32_MAX ||
-          banner_sound_capacity(template_banner, (uint32_t)banner_reserved,
-                                &audio_capacity, err, errlen))
+      free(cia);
+      return -1;
+   }
+   result = load_banner_cwav(path, audio_capacity, &cwav, &cwav_size,
+                             err, errlen);
+   if (result < 0)
+   {
+      free(cia);
+      return -1;
+   }
+   if (result == 0)
+   {
+      if (cwav_size > UINT32_MAX)
       {
+         free(cwav);
          free(cia);
+         snprintf(err, errlen, "The custom banner sound is too large.");
          return -1;
       }
-      result = wav_to_cwav_file(wav_path, audio_capacity, &cwav, &cwav_size,
-                                err, errlen);
-      if (result < 0)
-      {
-         free(cia);
-         return -1;
-      }
-      if (result == 0)
-      {
-         if (cwav_size > UINT32_MAX)
-         {
-            free(cwav);
-            free(cia);
-            snprintf(err, errlen, "The custom banner sound is too large.");
-            return -1;
-         }
-         params.cwav = cwav;
-         params.cwav_size = (uint32_t)cwav_size;
-      }
+      params.cwav = cwav;
+      params.cwav_size = (uint32_t)cwav_size;
    }
 
    result = fwdcia_make(cia, (uint32_t)cia_len, &params, fwdcia_sha256, err, errlen);
@@ -2085,54 +2136,30 @@ static Result install_cia_buf(const u8 *cia, u32 size)
 
 static int apply_custom_banner_sound(cia_t *parsed, u8 *banner,
                                      size_t banner_size, const char *path,
-                                     bool has_custom_banner, char *err,
-                                     int errlen)
+                                     char *err, int errlen)
 {
-   const char *extension;
-   char wav_path[800];
-   uint8_t *cwav = NULL, *copy = NULL;
-   size_t cwav_size = 0;
-   uint32_t audio_capacity;
-   uint32_t banner_len;
+   u8 *copy;
+   size_t banner_len = banner_size;
    int result;
 
-   if (!has_custom_banner)
-      return 0;
-   extension = strrchr(path, '.');
-   result = extension ? snprintf(wav_path, sizeof(wav_path), "%.*s.banner.wav",
-                                 (int)(extension - path), path) : -1;
-   if (result < 0 || result >= (int)sizeof(wav_path))
+   if (banner_size > UINT32_MAX)
    {
-      snprintf(err, errlen, "Could not create the .banner.wav path.");
-      return -1;
-   }
-   if (banner_size > UINT32_MAX ||
-       banner_sound_capacity(banner, (uint32_t)banner_size, &audio_capacity,
-                             err, errlen))
-      return -1;
-   result = wav_to_cwav_file(wav_path, audio_capacity, &cwav, &cwav_size,
-                             err, errlen);
-   if (result == 1)
-      return 0;
-   if (result < 0)
-      return -1;
-   if (banner_size > UINT32_MAX || cwav_size > UINT32_MAX)
-   {
-      free(cwav);
-      snprintf(err, errlen, "The custom banner sound is too large.");
+      snprintf(err, errlen, "The banner is too large for custom audio.");
       return -1;
    }
    copy = malloc(banner_size);
    if (!copy)
    {
-      free(cwav);
       snprintf(err, errlen, "Not enough memory to set the banner sound.");
       return -1;
    }
    memcpy(copy, banner, banner_size);
-   result = banner_set_sound(copy, (uint32_t)banner_size, cwav,
-                             (uint32_t)cwav_size, &banner_len, err, errlen);
-   free(cwav);
+   result = add_banner_cwav(copy, banner_size, &banner_len, path, err, errlen);
+   if (result == 1)
+   {
+      free(copy);
+      return 0;
+   }
    if (result || cia_set_banner(parsed, copy, banner_len) != CIA_OK)
    {
       if (!result)
@@ -2153,12 +2180,14 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
    char longt[160];
    u8 *cia = NULL, *three_d_bnr = NULL, *template_banner;
    size_t banner_reserved, template_cwav_size, three_d_bnr_size = 0;
+   size_t three_d_banner_size;
    u32 template_cwav_off, three_d_cwav_off;
    long cia_len, bnr_len;
    FILE *f = NULL;
    cia_t parsed;
    u64 tid;
    Result r;
+   int audio_result;
    bool has_app_smdh;
 
    if (e->sys == SYS_NDS)
@@ -2250,7 +2279,7 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
    }
    cia_set_title_id(&parsed, tid);
    cia_set_process_name(&parsed, "3DSXFW");
-   cia_set_version(&parsed, 1);
+   cia_set_version(&parsed, 2);
    template_banner = cia_banner_data(&parsed, &banner_reserved);
    if (!template_banner || !banner_reserved)
    {
@@ -2267,7 +2296,7 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
          return -1;
       }
       if (apply_custom_banner_sound(&parsed, template_banner, banner_reserved,
-                                    path, e->pic[1] >= 0, err, errlen))
+                                    path, err, errlen))
       {
          free(cia);
          return -1;
@@ -2327,7 +2356,16 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
       }
       memcpy(three_d_bnr + three_d_cwav_off, template_banner + template_cwav_off,
              template_cwav_size);
-      if (cia_set_banner(&parsed, three_d_bnr, three_d_cwav_off + template_cwav_size) != CIA_OK)
+      three_d_banner_size = three_d_cwav_off + template_cwav_size;
+      audio_result = add_banner_cwav(three_d_bnr, three_d_bnr_size,
+                                     &three_d_banner_size, path, err, errlen);
+      if (audio_result < 0)
+      {
+         free(three_d_bnr);
+         free(cia);
+         return -1;
+      }
+      if (cia_set_banner(&parsed, three_d_bnr, three_d_banner_size) != CIA_OK)
       {
          free(three_d_bnr);
          free(cia);

@@ -58,9 +58,9 @@ Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name 
 - `fallout2.3dsx` - 3dsx / .gba / .*etc*
 - `fallout2.png` - Icon (48x48)
 - `fallout2.banner.png` - Banner (256x128)
-- `fallout2.banner.wav` - Banner Audio (3 seconds max)
+- `fallout2.banner.wav` - Banner audio (3 seconds max)
 
-   - Note: Banners are silent if no .banner.wav file is found
+   - A matching WAV replaces the template audio for flat and 3D banners, even without a custom banner image. If no WAV is found, the template audio remains.
 
 ##### NDS Custom Icons
     - NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.

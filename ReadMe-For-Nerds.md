@@ -35,7 +35,7 @@ Place artwork beside the game file and use its base name. For `Super Game.gba`, 
 - `Super Game.banner.png`, `.jpg`, or `.jpeg` — banner
 - `Super Game.banner.wav` — banner audio
 
-The same naming convention works for 3DSX and supported SNES files. Images may be any size; they are fitted with padding rather than cropped. WAV audio must be 16-bit PCM and no longer than three seconds. The top screen previews the selected artwork before installation.
+The same naming convention works for 3DSX and supported GBA/SNES files. Custom WAV audio applies to flat and 3D banners, with or without a custom banner image; when no matching WAV exists, the template audio is kept. Images may be any size; they are fitted with padding rather than cropped. WAV audio must be 16-bit PCM and no longer than three seconds. The top screen previews the selected artwork before installation.
 
 NDS forwarders use the NDS builder's artwork convention: a same-name `.bmp` icon and `.bin` banner beside the ROM, or in `sdmc:/3ds/MULTI-Forwarder/icons/` and `banners/`. Custom BMP icons must be 32x32, uncompressed, 4-bit indexed BMPs; palette index 0 is treated as transparent in previews. A valid custom BMP is selected by default when browsing an NDS game; **SELECT** toggles between it and the ROM's default icon. The PNG/JPEG/WAV artwork pipeline above does not apply to NDS forwarders.
 

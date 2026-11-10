@@ -58,8 +58,9 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
    uint32_t sample_rate = 0;
    uint32_t output_rate;
    uint16_t channels = 0, bits = 0, format = 0, block_align = 0;
-   uint8_t *cwav, *info, *data, *mono;
+   uint8_t *cwav, *info, *data, *left, *right;
    size_t i;
+   int ch;
 
    if (wav_size < 12 || memcmp(wav, "RIFF", 4) || memcmp(wav + 8, "WAVE", 4))
       return fail(err, errlen, "The .banner.wav file is not a RIFF WAV.");
@@ -95,9 +96,9 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
       return fail(err, errlen, "The .banner.wav file has no complete PCM samples.");
 
    samples = data_size / block_align;
-   if (max_cwav_size < CWAV_DATA_OFFSET + 0x22)
+   if (max_cwav_size < CWAV_DATA_OFFSET + 0x20 + 4)
       return fail(err, errlen, "The banner template has too little room for audio.");
-   max_samples = (max_cwav_size - CWAV_DATA_OFFSET - 0x20) / 2;
+   max_samples = (max_cwav_size - CWAV_DATA_OFFSET - 0x20) / 4;
    output_rate = sample_rate > CWAV_MAX_RATE ? CWAV_MAX_RATE : sample_rate;
    output_samples = (size_t)((uint64_t)samples * output_rate / sample_rate);
    if (!output_samples)
@@ -114,7 +115,7 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
          output_samples = 1;
    }
    channel_size = output_samples * 2;
-   total = CWAV_DATA_OFFSET + 0x20 + channel_size;
+   total = CWAV_DATA_OFFSET + 0x20 + channel_size * 2;
    if (total > max_cwav_size || total > UINT32_MAX)
       return fail(err, errlen, "The .banner.wav is too long to fit; use a shorter sound.");
 
@@ -133,7 +134,7 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
    wr32(cwav + 28, CWAV_INFO_SIZE);
    wr16(cwav + 32, 0x7001);
    wr32(cwav + 36, CWAV_DATA_OFFSET);
-   wr32(cwav + 40, (uint32_t)(0x20 + channel_size));
+   wr32(cwav + 40, (uint32_t)(0x20 + channel_size * 2));
 
    info = cwav + 0x40;
    memcpy(info, "INFO", 4);
@@ -141,40 +142,49 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
    info[8] = 1;
    wr32(info + 12, output_rate);
    wr32(info + 20, (uint32_t)output_samples);
-   wr32(info + 28, 1);
+   wr32(info + 28, 2);
    wr16(info + 32, 0x7100);
    wr32(info + 36, 0x14);
-   wr16(info + 48, 0x1F00);
-   wr32(info + 52, 0x18);
-   wr32(info + 60, UINT32_MAX);
+   wr16(info + 40, 0x7100);
+   wr32(info + 44, 0x28);
+   for (i = 0; i < 2; i++)
+   {
+      uint8_t *channel = info + 48 + i * 20;
+      wr16(channel, 0x1F00);
+      wr32(channel + 4, (uint32_t)(0x18 + i * channel_size));
+      wr32(channel + 12, UINT32_MAX);
+   }
 
    data = cwav + CWAV_DATA_OFFSET;
    memcpy(data, "DATA", 4);
-   wr32(data + 4, (uint32_t)(0x20 + channel_size));
-   mono = data + 0x20;
+   wr32(data + 4, (uint32_t)(0x20 + channel_size * 2));
+   left = data + 0x20;
+   right = left + channel_size;
    for (i = 0; i < output_samples; i++)
    {
-      uint64_t start = (uint64_t)i * sample_rate;
-      uint64_t end = (uint64_t)(i + 1) * sample_rate;
-      size_t first = (size_t)(start / output_rate);
-      size_t last = (size_t)((end + output_rate - 1) / output_rate);
-      int64_t sum = 0;
-      uint64_t weight = 0;
-      size_t j;
-      for (j = first; j < last && j < samples; j++)
+      for (ch = 0; ch < 2; ch++)
       {
-         uint64_t frame_start = (uint64_t)j * output_rate;
-         uint64_t frame_end = frame_start + output_rate;
-         uint64_t low = start > frame_start ? start : frame_start;
-         uint64_t high = end < frame_end ? end : frame_end;
-         const uint8_t *frame = wav + data_off + j * block_align;
-         int32_t sample = pcm16(frame);
-         if (channels == 2)
-            sample = (sample + pcm16(frame + 2)) / 2;
-         sum += (int64_t)sample * (int64_t)(high - low);
-         weight += high - low;
+         uint64_t start = (uint64_t)i * sample_rate;
+         uint64_t end = (uint64_t)(i + 1) * sample_rate;
+         size_t first = (size_t)(start / output_rate);
+         size_t last = (size_t)((end + output_rate - 1) / output_rate);
+         int64_t sum = 0;
+         uint64_t weight = 0;
+         size_t j;
+         for (j = first; j < last && j < samples; j++)
+         {
+            uint64_t frame_start = (uint64_t)j * output_rate;
+            uint64_t frame_end = frame_start + output_rate;
+            uint64_t low = start > frame_start ? start : frame_start;
+            uint64_t high = end < frame_end ? end : frame_end;
+            const uint8_t *frame = wav + data_off + j * block_align;
+            int32_t sample = pcm16(frame + (channels == 2 ? ch * 2 : 0));
+            sum += (int64_t)sample * (int64_t)(high - low);
+            weight += high - low;
+         }
+         wr16((ch ? right : left) + i * 2,
+              (uint16_t)(sum / (int64_t)weight));
       }
-      wr16(mono + i * 2, (uint16_t)(sum / (int64_t)weight));
    }
 
    *out = cwav;
