@@ -46,7 +46,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.4.0"
+#define ICONMAKER_VERSION "0.4.1"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define FORWARDER_UID_START 0xC0000u
@@ -311,6 +311,26 @@ static void wrap_text_two_lines(const ui_font *font, const char *text, int max_w
 
    snprintf(first, first_size, "%s", text);
    second[0] = 0;
+   for (p = text; *p; p++)
+   {
+      if (*p == '\r' || *p == '\n')
+      {
+         const char *rest = p + 1;
+         len = (size_t)(p - text);
+         while (len && text[len - 1] == ' ')
+            len--;
+         if (len >= first_size)
+            len = first_size - 1;
+         memcpy(first, text, len);
+         first[len] = 0;
+         if (*p == '\r' && *rest == '\n')
+            rest++;
+         while (*rest == '\r' || *rest == '\n')
+            rest++;
+         snprintf(second, second_size, "%s", rest);
+         return;
+      }
+   }
    if (ui_text_w(font, text) <= max_w)
       return;
 
@@ -1669,13 +1689,21 @@ static int wrap_name(const char *title, int sys, const ui_font *f, int maxw, cha
    while (*s && nl < rows)
    {
       char line[64] = "";
-      while (*s == ' ') s++;
+      while (*s == ' ' || *s == '\r' || *s == '\n')
+         s++;
       while (*s)
       {
          char test[64];
          const char *e = s;
          int w;
-         while (*e && *e != ' ') e++;
+         if (*s == '\r' || *s == '\n')
+         {
+            char newline = *s++;
+            if (newline == '\r' && *s == '\n')
+               s++;
+            break;
+         }
+         while (*e && *e != ' ' && *e != '\r' && *e != '\n') e++;
          if (e - s == 1 && *s == '-')        /* " - " between parts: a new line */
          {
             s = e;
@@ -1736,6 +1764,11 @@ static void outlined_text(u8 *img, int w, int h, const ui_font *f, int y, const 
    for (i = 0; i < 8; i++)
       rgba_text(img, w, h, f, x + d[i][0] * 2, y + d[i][1] * 2, s, 0x0A0A1E);
    rgba_text(img, w, h, f, x, y, s, rgb);
+}
+
+static void banner_custom_title(const char *title, int sys, u8 *banner, int maxw)
+{
+   banner_name(title, sys, banner, maxw);
 }
 
 /* the 3D banner's name strip (256x64, transparent): the name big on one
@@ -2011,7 +2044,18 @@ static int make_rom_icon(const char *path, const entry *e,
 
    make_art(path, e, &art);
    if (custom_title && custom_title[0])
+   {
       snprintf(art.title, sizeof(art.title), "%s", custom_title);
+      if (art.flat)
+      {
+         if (!art.has_banner_png)
+            default_banner(art.title, art.label, 128, 128, art.banner,
+                           banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
+         banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
+      }
+      else
+         name_strip(art.title, art.sys, art.name);
+   }
    tid = title_id_for_path(path, e->sys);
    if (!tid)
    {
@@ -2199,11 +2243,12 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
    if (custom_title && custom_title[0])
    {
       snprintf(art.title, sizeof(art.title), "%s", custom_title);
-      if (art.flat && !art.has_banner_png)
+      if (art.flat)
       {
-         default_banner(art.title, art.label, 128, 128, art.banner,
-                        banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
-         banner_name(art.title, art.sys, art.banner, 256 - 120 - 8);
+         if (!art.has_banner_png)
+            default_banner(art.title, art.label, 128, 128, art.banner,
+                           banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
+         banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
       }
       if (!art.flat)
          name_strip(art.title, art.sys, art.name);
@@ -2567,7 +2612,7 @@ static int text_lines(const ui_font *f, int x, int y, int dy, const char *s, u16
 static void draw_header(void)
 {
    ui_vgradient(0, 0, UI_W, TAB_Y, C_BG2, C_BG);
-   ui_text_center(&ui_font_title, UI_W / 2, 3, "MULTI-FORWARDER", C_TEXT);
+   ui_text_center(&ui_font_title, UI_W / 2, 3, "MULTI-FORWARDER", C_GOOD);
    ui_text_right(&ui_font_small, UI_W - 10, 10, "v" ICONMAKER_VERSION, C_DIM);
 }
 
@@ -2839,7 +2884,8 @@ static void draw_bottom(int tab, int sel, int top)
          }
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10, y + (h - ui_font_small.ascent) / 2 - 1,
                        systems[ic->sys].console,
-                       ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
+                       ic->sys == SYS_SNES ? C_ACCENT2 :
+                       ic->sys == SYS_3DSX ? C_GOOD : C_ACCENT);
       }
       draw_scrollbar(ninstalled_icons, top);
       draw_installed_footer(ninstalled_icons);
@@ -2866,10 +2912,11 @@ static void draw_bottom(int tab, int sel, int top)
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10,
                        y + (h - ui_font_small.ascent) / 2 - 1,
                        ic->is_nds_forwarder ? "NDS" : "TWL",
-                       ic->is_nds_forwarder ? C_ACCENT : C_DIM);
+                       ic->is_nds_forwarder ? UI_RGB(0xC0, 0xC0, 0xC0)
+                                             : UI_RGB(0xB5, 0x2B, 0x3A));
       }
       draw_scrollbar(ntwl_icons, top);
-      draw_twl_footer(ntwl_icons && twl_icons[sel].is_nds_forwarder);
+      draw_twl_footer(ntwl_icons != 0);
    }
 }
 
@@ -3414,6 +3461,27 @@ static void progress(const char *title, const char *line, int done, int n)
 /* actions                                                             */
 /* ------------------------------------------------------------------ */
 
+static int title_has_at_most_two_lines(const char *title)
+{
+   const char *p;
+   int lines = 1;
+
+   if (!title || !title[0] || title[0] == '\r' || title[0] == '\n')
+      return 0;
+   for (p = title; *p; p++)
+   {
+      if (*p != '\r' && *p != '\n')
+         continue;
+      if (++lines > 2)
+         return 0;
+      if (*p == '\r' && p[1] == '\n')
+         p++;
+      if (!p[1] || p[1] == '\r' || p[1] == '\n')
+         return 0;
+   }
+   return 1;
+}
+
 static int make_one(const entry *e)
 {
    const char *name = e->name;
@@ -3461,6 +3529,12 @@ static int make_one(const entry *e)
                 "OK", NULL, C_ROW_SEL);
          return 0;
       }
+      if (!title_has_at_most_two_lines(custom_title))
+      {
+         dialog("Title too long", "Use a title on one or two lines only.",
+                "OK", NULL, C_ROW_SEL);
+         return 0;
+      }
    }
    if (e->sys != SYS_NDS && dialog("Custom Publisher?", "", "Yes", "No", C_ACCENT))
    {
@@ -3469,6 +3543,12 @@ static int make_one(const entry *e)
       swkbdSetHintText(&keyboard, "Enter custom publisher");
       if (swkbdInputText(&keyboard, custom_publisher, sizeof(custom_publisher)) != SWKBD_BUTTON_CONFIRM)
          return 0;
+      if (strchr(custom_publisher, '\n') || strchr(custom_publisher, '\r'))
+      {
+         dialog("Publisher must be one line", "Enter the publisher on one line only.",
+                "OK", NULL, C_ROW_SEL);
+         return 0;
+      }
       use_custom_publisher = true;
    }
    progress("Making the icon...", name, 0, 1);
@@ -3782,23 +3862,29 @@ static bool delete_icon(const icon_entry *ic)
    return true;
 }
 
-static bool delete_twl_forwarder(const twl_icon_entry *ic)
+static bool delete_twl_title(const twl_icon_entry *ic)
 {
    char body[200];
    Result r;
    u64 tid = ic->tid;
+   FS_MediaType media = ic->media;
+   bool is_nds_forwarder = ic->is_nds_forwarder;
    int i, j;
-   if (!ic->is_nds_forwarder)
-      return false;
-   snprintf(body, sizeof(body),
-            "%.60s\nOnly this NDS forwarder is removed.\nThe .nds stays on the SD card.",
-            ic->name);
-   if (!dialog("Uninstall this NDS forwarder?", body, "Uninstall", "Cancel",
+   if (is_nds_forwarder)
+      snprintf(body, sizeof(body),
+               "%.60s\nOnly this NDS forwarder is removed.\nThe .nds stays on the SD card.",
+               ic->name);
+   else
+      snprintf(body, sizeof(body), "%.60s\nThis TWL title will be removed from %s.",
+               ic->name, media == MEDIATYPE_NAND ? "NAND" : "the SD card");
+   if (!dialog(is_nds_forwarder ? "Uninstall this NDS forwarder?"
+                                : "Uninstall this TWL title?",
+               body, "Uninstall", "Cancel",
                UI_RGB(0xC8, 0x45, 0x45)))
       return false;
-   progress_keys("Uninstalling this Forwarder,", "Please Wait...", 0, 0, "");
+   progress_keys("Uninstalling this TWL title,", "Please Wait...", 0, 0, "");
    gspWaitForVBlank();
-   r = AM_DeleteTitle(MEDIATYPE_NAND, tid);
+   r = AM_DeleteTitle(media, tid);
    if (R_SUCCEEDED(r))
       AM_DeleteTicket(tid);
    if (R_FAILED(r))
@@ -3808,16 +3894,18 @@ static bool delete_twl_forwarder(const twl_icon_entry *ic)
       return false;
    }
    for (i = 0; i < ntwl_icons; i++)
-      if (twl_icons[i].tid == tid && twl_icons[i].media == MEDIATYPE_NAND)
+      if (twl_icons[i].tid == tid && twl_icons[i].media == media)
       {
          for (j = i + 1; j < ntwl_icons; j++)
             twl_icons[j - 1] = twl_icons[j];
          ntwl_icons--;
          break;
       }
-   if (twl_installed_count != 0xFFFFFFFF && twl_installed_count)
+   if (media == MEDIATYPE_NAND &&
+       twl_installed_count != 0xFFFFFFFF && twl_installed_count)
       twl_installed_count--;
-   set_game_installed_badge(tid, false);
+   if (is_nds_forwarder)
+      set_game_installed_badge(tid, false);
    return true;
 }
 
@@ -4379,10 +4467,9 @@ int main(void)
          }
       }
       else if (tab == TAB_TWL && (k & KEY_X) && sel >= 0 &&
-               sel < ntwl_icons &&
-               twl_icons[sel].is_nds_forwarder)
+               sel < ntwl_icons)
       {
-         if (delete_twl_forwarder(&twl_icons[sel]))
+         if (delete_twl_title(&twl_icons[sel]))
             top_wait = 1;
          redraw = true;
       }

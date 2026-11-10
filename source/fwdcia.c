@@ -284,6 +284,15 @@ static void put_utf16(uint8_t *dst, int max, const char *s)
    memset(dst, 0, max * 2);
    while (*u && n < max - 1)
    {
+      if (*u == '\r' || *u == '\n')
+      {
+         unsigned char first = *u++;
+         if (first == '\r' && *u == '\n')
+            u++;
+         dst[n * 2] = '\n';
+         n++;
+         continue;
+      }
       uint32_t c = *u++;
       if (c >= 0xC0 && c < 0xE0 && (u[0] & 0xC0) == 0x80)
          c = (c & 0x1F) << 6 | (*u++ & 0x3F);

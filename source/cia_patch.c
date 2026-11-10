@@ -277,6 +277,15 @@ static void put_utf16(uint8_t* dst, size_t chars, const char* text)
 	memset(dst, 0, chars * 2);
 	while (*p && i + 1 < chars)
 	{
+		if (*p == '\r' || *p == '\n')
+		{
+			unsigned char first = *p++;
+			if (first == '\r' && *p == '\n')
+				p++;
+			dst[i * 2] = '\n';
+			i++;
+			continue;
+		}
 		uint32_t codepoint = next_utf8_codepoint(&p);
 		if (codepoint <= 0xFFFF)
 		{
