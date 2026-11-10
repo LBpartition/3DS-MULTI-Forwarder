@@ -33,16 +33,19 @@ typedef struct
    const uint8_t *banner;  /* 256x128 RGBA top-screen picture (3D template: the 256x64 name strip),
                               or NULL to keep the template's */
    const uint8_t *label;   /* 3D template only: 128x128 RGBA on the tile, or NULL */
+   const uint8_t *cwav;    /* optional custom banner audio */
+   uint32_t cwav_size;
 } fwdcia_params;
 
 /* Returns 0, or -1 with a message in err. */
 int fwdcia_make(uint8_t *cia, uint32_t size, const fwdcia_params *p,
                 fwdcia_sha256_fn sha256, char *err, int errlen);
 
-/* A title ID for a game, from its path: 0x00040000 000C0000-000EFF00 (away
- * from gpSP 3D's own and the template's). Same as make-forwarders.sh's
- * range, though not the same numbers. */
+/* Multi-Forwarder's original path-derived title ID range for 3DSX forwarders. */
 uint64_t fwdcia_title_id_for(const char *path);
+
+/* Icon Maker-compatible GBA/SNES path-derived title ID in 0xC0000-0xEFFFF. */
+uint64_t fwdcia_iconmaker_title_id_for(const char *path);
 
 /* --- SMDH (HOME Menu name and icon) --- */
 

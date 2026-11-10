@@ -1,5 +1,9 @@
 #include "ui.h"
 #include <string.h>
+#ifdef __3DS__
+#include <3ds/font.h>
+#include <3ds/gpu/enums.h>
+#endif
 
 uint16_t ui_canvas[UI_W * UI_H];
 
@@ -201,11 +205,144 @@ const ui_glyph *ui_glyph_of(const ui_font *f, unsigned c)
    return &f->g['?' - 32];
 }
 
+static bool local_glyph_supported(unsigned c)
+{
+   switch (c)
+   {
+      case 0x2018: case 0x2019: case 0x201C: case 0x201D:
+      case 0x2013: case 0x2014: case 0x2026: case 0x2122:
+      case 0xA0:
+         return true;
+   }
+   return (c >= 32 && c <= 126) || (c >= 160 && c <= 255);
+}
+
+#ifdef __3DS__
+static CFNT_s *shared_system_font(void)
+{
+   static CFNT_s *font;
+   if (!font && fontEnsureMapped() == 0)
+      font = fontGetSystemFont();
+   return font;
+}
+
+static bool system_glyph(const ui_font *ui, unsigned codepoint,
+                         CFNT_s **font_out, TGLP_s **glyph_info_out,
+                         fontGlyphPos_s *position)
+{
+   CFNT_s *font;
+   TGLP_s *glyph_info;
+   int index;
+   float scale;
+   if (codepoint > 0xFFFF || !(font = shared_system_font()))
+      return false;
+   index = fontGlyphIndexFromCodePoint(font, codepoint);
+   if (index < 0 || index == font->finf.alterCharIndex)
+      return false;
+   glyph_info = fontGetGlyphInfo(font);
+   if (!glyph_info || !glyph_info->cellHeight)
+      return false;
+   scale = (float)ui->height / glyph_info->cellHeight;
+   fontCalcGlyphPos(position, font, index, 0, scale, scale);
+   if (font_out) *font_out = font;
+   if (glyph_info_out) *glyph_info_out = glyph_info;
+   return true;
+}
+
+static unsigned system_font_alpha(const TGLP_s *glyph_info, int sheet,
+                                  int x, int y)
+{
+   const u8 *data;
+   unsigned pixel, tile;
+   if (x < 0 || y < 0 || x >= glyph_info->sheetWidth ||
+       y >= glyph_info->sheetHeight || sheet < 0 || sheet >= glyph_info->nSheets)
+      return 0;
+   tile = (unsigned)(y / 8) * (glyph_info->sheetWidth / 8) + (unsigned)(x / 8);
+   pixel = (unsigned)(x & 1) | (unsigned)(y & 1) << 1 |
+           (unsigned)(x & 2) << 1 | (unsigned)(y & 2) << 2 |
+           (unsigned)(x & 4) << 2 | (unsigned)(y & 4) << 3;
+   data = glyph_info->sheetData + (size_t)sheet * glyph_info->sheetSize;
+   if (glyph_info->sheetFmt == GPU_A4)
+   {
+      unsigned packed = data[tile * 32 + pixel / 2];
+      return (pixel & 1 ? packed >> 4 : packed & 15) * 17;
+   }
+   if (glyph_info->sheetFmt == GPU_A8)
+      return data[tile * 64 + pixel];
+   return 0;
+}
+
+static bool draw_system_glyph(const ui_font *ui, unsigned codepoint,
+                              int x, int y, uint16_t color)
+{
+   CFNT_s *font;
+   TGLP_s *glyph_info;
+   fontGlyphPos_s position;
+   int src_x, src_y, width, height, dx, dy, sheet;
+   float scale;
+   if (!system_glyph(ui, codepoint, &font, &glyph_info, &position))
+      return false;
+   if (glyph_info->sheetFmt != GPU_A4 && glyph_info->sheetFmt != GPU_A8)
+      return false;
+   scale = (float)ui->height / glyph_info->cellHeight;
+   src_x = (int)(position.texcoord.left * glyph_info->sheetWidth + 0.5f);
+   src_y = (int)((1.0f - position.texcoord.top) * glyph_info->sheetHeight + 0.5f);
+   width = (int)(position.width + 0.5f);
+   height = (int)(glyph_info->cellHeight * scale + 0.5f);
+   sheet = position.sheetIndex;
+   x += (int)(position.xOffset + 0.5f);
+   y += ui->ascent - (int)(glyph_info->baselinePos * scale + 0.5f);
+   for (dy = 0; dy < height; dy++)
+      for (dx = 0; dx < width; dx++)
+      {
+         unsigned alpha = system_font_alpha(glyph_info, sheet,
+                            src_x + (int)(dx / scale),
+                            src_y + (int)(dy / scale));
+         if (alpha)
+            plot(x + dx, y + dy, color, alpha == 255 ? 256 : (int)alpha);
+      }
+   return true;
+}
+#endif
+
+bool ui_text_supported(const char *s)
+{
+   while (*s)
+   {
+      unsigned c = ui_utf8_next(&s);
+      if (local_glyph_supported(c))
+         continue;
+#ifdef __3DS__
+      {
+         fontGlyphPos_s position;
+         if (system_glyph(&ui_font_body, c, NULL, NULL, &position))
+            continue;
+      }
+#endif
+      return false;
+   }
+   return true;
+}
+
+int ui_char_width(const ui_font *f, unsigned c)
+{
+   if (local_glyph_supported(c))
+      return ui_glyph_of(f, c)->adv;
+#ifdef __3DS__
+   {
+      fontGlyphPos_s position;
+      if (system_glyph(f, c, NULL, NULL, &position))
+         return (int)(position.xAdvance + 0.5f);
+   }
+#endif
+   return ui_glyph_of(f, '?')->adv;
+}
+
 int ui_text_w(const ui_font *f, const char *s)
 {
    int w = 0;
    while (*s)
-      w += ui_glyph_of(f, ui_utf8_next(&s))->adv;
+      w += ui_char_width(f, ui_utf8_next(&s));
    return w;
 }
 
@@ -229,8 +366,9 @@ int ui_text(const ui_font *f, int x, int y, const char *s, uint16_t c, int max_w
       dots = ui_text_w(f, "...");
    while (*s)
    {
-      const ui_glyph *g = ui_glyph_of(f, ui_utf8_next(&s));
-      if (dots && x + g->adv - x0 > max_w - dots)
+      unsigned codepoint = ui_utf8_next(&s);
+      int advance = ui_char_width(f, codepoint);
+      if (dots && x + advance - x0 > max_w - dots)
       {
          const char *d = "...";
          for (; *d; d++)
@@ -241,8 +379,16 @@ int ui_text(const ui_font *f, int x, int y, const char *s, uint16_t c, int max_w
          }
          break;
       }
-      draw_glyph(f, g, x, y, c);
-      x += g->adv;
+      if (local_glyph_supported(codepoint))
+         draw_glyph(f, ui_glyph_of(f, codepoint), x, y, c);
+#ifdef __3DS__
+      else if (!draw_system_glyph(f, codepoint, x, y, c))
+         draw_glyph(f, ui_glyph_of(f, '?'), x, y, c);
+#else
+      else
+         draw_glyph(f, ui_glyph_of(f, '?'), x, y, c);
+#endif
+      x += advance;
    }
    return x;
 }

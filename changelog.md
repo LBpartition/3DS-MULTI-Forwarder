@@ -1,3 +1,10 @@
+### v0.4.0 — MULTI-FORWARDER
+- Add GBA and SNES forwarders with custom icons, banners, and banner audio.
+- Add NDS/TWL title listing and NDS forwarder creation.
+- Move app-owned runtime data to `sdmc:/3ds/MULTI-Forwarder`.
+- Add an opt-in import of the old `sdmc:/3ds/3DSX-Forwarder` folder.
+- Add installed-type filters and update the app branding.
+
 ### v0.2.0
 - Initial Release
 

@@ -209,6 +209,26 @@ int fwdcia_make(uint8_t *cia, uint32_t size, const fwdcia_params *p,
          return fail(err, errlen, "bad banner entry");
       if (banner_set_images(exefs + off, len, p->banner, p->label, err, errlen))
          return -1;
+      if (p->cwav && p->cwav_size)
+      {
+         uint32_t banner_size;
+         if (banner_set_sound(exefs + off, len, p->cwav, p->cwav_size,
+                              &banner_size, err, errlen))
+            return -1;
+      }
+      sha256(exefs + off, len, exefs + 0x200 - (bnr + 1) * 0x20);
+   }
+   else if (p->cwav && p->cwav_size)
+   {
+      uint32_t off, len, banner_size;
+      if (bnr < 0)
+         return fail(err, errlen, "no banner in the ExeFS");
+      off = 0x200 + rd32le(exefs + bnr * 16 + 8);
+      len = rd32le(exefs + bnr * 16 + 12);
+      if (!in(off, len, exefs_size) ||
+          banner_set_sound(exefs + off, len, p->cwav, p->cwav_size,
+                           &banner_size, err, errlen))
+         return -1;
       sha256(exefs + off, len, exefs + 0x200 - (bnr + 1) * 0x20);
    }
 
@@ -229,14 +249,28 @@ int fwdcia_make(uint8_t *cia, uint32_t size, const fwdcia_params *p,
    return 0;
 }
 
-uint64_t fwdcia_title_id_for(const char *path)
+static uint32_t fwdcia_path_hash(const char *path)
 {
-   /* FNV-1a of the path */
-   uint32_t h = 2166136261u, uid;
+   uint32_t h = 2166136261u;
    const unsigned char *s = (const unsigned char*)path;
    while (*s)
       h = (h ^ *s++) * 16777619u;
+   return h;
+}
+
+uint64_t fwdcia_title_id_for(const char *path)
+{
+   uint32_t uid;
+   uint32_t h = fwdcia_path_hash(path);
    uid = 0xF0000 + h % 0xF000;
+   return 0x0004000000000000ULL | (uint64_t)uid << 8;
+}
+
+uint64_t fwdcia_iconmaker_title_id_for(const char *path)
+{
+   uint32_t uid;
+   uint32_t h = fwdcia_path_hash(path);
+   uid = 0xC0000 + h % 0x30000;
    return 0x0004000000000000ULL | (uint64_t)uid << 8;
 }
 

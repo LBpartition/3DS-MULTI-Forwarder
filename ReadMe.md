@@ -1,0 +1,86 @@
+# MULTI-Forwarder
+
+### Create, Install & Manage Custom Forwarders for 
+- 3DSX - `.3dsx`
+   - [HomeBrew Launcher](https://github.com/PabloMK7/homebrew_launcher_dummy/releases) Required
+- .NDS - `.nds`
+   - [Twilight Menu](https://github.com/DS-Homebrew/TWiLightMenu) Required
+- GBA - `.gba`
+   - [gpSP3D](https://github.com/bheppe/gpsp-3d/releases/latest) Required
+- SNES - `.smc`, `.sfc`, `.fig`, `.bs`, `.bsx`.
+   - [Snes9x-3D](https://github.com/bheppe/snes9x_3ds/releases/latest) Required
+
+### Features
+- Custom Title Names & Publisher Names
+- Preview Icon, Banner & Title on top screen
+- A Tab to list your installed Forwarders, with the option to uninstall them. 
+--- 3DSX / GBA / SNES
+- 3 Different Banner Styles - Switch between them with `Select`
+- Create your own custom Icons and Banners with `.png`/`.jpg` & `.wav` files
+--- NDS
+- Create your own custom Icons (also used for NDS banners) with `.bmp' files
+- A Tab to list your installed TWL Titles - Keep track of the 3DS's limit of 40 TWL Titles & Uninstall NDS Forwarders
+
+## Tested on New 3DS & Old 3DS XL with:
+
+|  |  |  |  |  |  
+
+|---|---|---|
+| List & Uninstall Forwarders: |  |  |
+|---|---|---|
+| Preview Banners & Icons Before Creating: |  |  |
+|---|---|---|
+|  |  |  |
+|---|---|---|
+|  |  |  |
+|---|---|---|
+| Custom 3DSX / GBA / SNES Icons, Banners & Banner Audio |  |  |
+|---|---|---|
+| Custom NDS Icons (Also used for banners) |  |  |
+|---|---|---|
+
+## How to Use:
+1. Download the [Latest MULTI-Forwarder.zip](https://github.com/LBpartition/MULTI-Forwarder/releases/latest),
+2. Extract the zip and copy the `3ds` folder to your 3DS SD card.
+3. Launch `MULTI-Forwarder` from the Homebrew Launcher
+4. Choose a .3dsx/.nds/.gba/.smc/.sfc/.*etc* file to forward, Press `A` and go through the prompts to create the forwarder (*Custom Title Name? & Custom Publisher?)
+- Preview Banner & Title on the Top Screen before creating the Forwarder
+- 3 Different Banner Styles: Switch between them with `Select` (4th banner style *custom* is automatically shown if custom banner files are found)
+- NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
+
+## Custom Icons, Banners & Banner Audio
+
+#### Not a fan of the included banner styles? - Create your own! 
+
+##### 3DSX / GBA / SNES
+Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name them like this:
+
+- `fallout2.3dsx` - 3dsx / .gba / .*etc*
+- `fallout2.png` - Icon (48x48)
+- `fallout2.banner.png` - Banner (256x128)
+- `fallout2.banner.wav` - Banner Audio (3 seconds max)
+
+   - Note: Banners are silent if no .banner.wav file is found
+
+##### NDS Custom Icons
+    - NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
+Place your `.bmp` files in the same folder as your .nds rom & name them like this:
+- `Pokemon - Storm Silver.nds` - .nds
+- `Pokemon - Storm Silver.bmp` - Icon (32x32) (Also used for NDS Banners)
+
+   - Note: .nds custom icon requirements:
+     - `.bmp` only.
+     - **4 bits per pixel**: indexed/paletted, up to 16 colors.
+     - A **40-byte `BITMAPINFOHEADER`** and **BI_RGB compression** (`0`).
+     - At most 16 palette entries. If the palette count is zero, the code assumes 16.
+     - Pixel data must contain 512 bytes (32 rows × 16 bytes); standard padding is not needed at this width.
+--- 
+
+## Bugs & Suggestions
+[Post a new issue here](https://github.com/LBpartition/MULTI-Forwarder/issues) to report bugs or suggest features
+
+## Credits
+- bheppe - GUI, Custom Icons & Banners + GBA/SNES Forwarders - Based on [Snes9xn](github.com/bheppe/snes9x_3ds) + [gpSP-3D & IconMaker](https://github.com/bheppe/gpsp-3d)
+- Fadgiras - 3DSX Forwarders - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
+- Fishand73 - NDS Forwarders + Custom Icons - Based on [ndsForwarder Fork](https://github.com/fishand73/ndsForwarder)
+- Claude - its vibecoded

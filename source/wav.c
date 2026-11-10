@@ -8,6 +8,8 @@
 #define WAV_FILE_MAX (16u * 1024u * 1024u)
 #define CWAV_INFO_SIZE 0x60u
 #define CWAV_DATA_OFFSET 0xA0u
+#define CWAV_MAX_RATE 22050u
+#define CWAV_MIN_RATE 8000u
 
 static uint16_t rd16(const uint8_t *p)
 {
@@ -41,13 +43,22 @@ static int fail(char *err, size_t errlen, const char *message)
    return -1;
 }
 
+static int32_t pcm16(const uint8_t *p)
+{
+   uint16_t value = rd16(p);
+   return value & 0x8000 ? (int32_t)value - 0x10000 : value;
+}
+
 static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
-                       size_t *out_size, char *err, size_t errlen)
+                       size_t *out_size, size_t max_cwav_size,
+                       char *err, size_t errlen)
 {
    size_t pos, data_off = 0, data_size = 0, samples, channel_size, total;
+   size_t output_samples, max_samples;
    uint32_t sample_rate = 0;
+   uint32_t output_rate;
    uint16_t channels = 0, bits = 0, format = 0, block_align = 0;
-   uint8_t *cwav, *info, *data, *left, *right;
+   uint8_t *cwav, *info, *data, *mono;
    size_t i;
 
    if (wav_size < 12 || memcmp(wav, "RIFF", 4) || memcmp(wav + 8, "WAVE", 4))
@@ -84,14 +95,28 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
       return fail(err, errlen, "The .banner.wav file has no complete PCM samples.");
 
    samples = data_size / block_align;
-   if (samples > UINT32_MAX / 4)
-      return fail(err, errlen, "The .banner.wav file is too long.");
-   channel_size = samples * 2;
-   if (channel_size > UINT32_MAX / 2 - 0x20)
-      return fail(err, errlen, "The .banner.wav file is too long.");
-   total = CWAV_DATA_OFFSET + 0x20 + channel_size * 2;
-   if (total > UINT32_MAX)
-      return fail(err, errlen, "The .banner.wav file is too long.");
+   if (max_cwav_size < CWAV_DATA_OFFSET + 0x22)
+      return fail(err, errlen, "The banner template has too little room for audio.");
+   max_samples = (max_cwav_size - CWAV_DATA_OFFSET - 0x20) / 2;
+   output_rate = sample_rate > CWAV_MAX_RATE ? CWAV_MAX_RATE : sample_rate;
+   output_samples = (size_t)((uint64_t)samples * output_rate / sample_rate);
+   if (!output_samples)
+      output_samples = 1;
+   if (output_samples > max_samples)
+   {
+      uint32_t min_rate = sample_rate < CWAV_MIN_RATE ? sample_rate : CWAV_MIN_RATE;
+      uint64_t fit_rate = (uint64_t)max_samples * sample_rate / samples;
+      if (fit_rate < min_rate)
+         return fail(err, errlen, "The .banner.wav is too long to fit; use a shorter sound.");
+      output_rate = fit_rate > output_rate ? output_rate : (uint32_t)fit_rate;
+      output_samples = (size_t)((uint64_t)samples * output_rate / sample_rate);
+      if (!output_samples)
+         output_samples = 1;
+   }
+   channel_size = output_samples * 2;
+   total = CWAV_DATA_OFFSET + 0x20 + channel_size;
+   if (total > max_cwav_size || total > UINT32_MAX)
+      return fail(err, errlen, "The .banner.wav is too long to fit; use a shorter sound.");
 
    cwav = calloc(1, total);
    if (!cwav)
@@ -108,47 +133,48 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
    wr32(cwav + 28, CWAV_INFO_SIZE);
    wr16(cwav + 32, 0x7001);
    wr32(cwav + 36, CWAV_DATA_OFFSET);
-   wr32(cwav + 40, (uint32_t)(0x20 + channel_size * 2));
+   wr32(cwav + 40, (uint32_t)(0x20 + channel_size));
 
    info = cwav + 0x40;
    memcpy(info, "INFO", 4);
    wr32(info + 4, CWAV_INFO_SIZE);
    info[8] = 1;
-   wr32(info + 12, sample_rate);
-   wr32(info + 20, (uint32_t)samples);
-   wr32(info + 28, 2);
+   wr32(info + 12, output_rate);
+   wr32(info + 20, (uint32_t)output_samples);
+   wr32(info + 28, 1);
    wr16(info + 32, 0x7100);
    wr32(info + 36, 0x14);
-   wr16(info + 40, 0x7100);
-   wr32(info + 44, 0x28);
-   for (i = 0; i < 2; i++)
-   {
-      uint8_t *channel = info + 48 + i * 20;
-      wr16(channel, 0x1F00);
-      wr32(channel + 4, (uint32_t)(0x18 + i * channel_size));
-      wr32(channel + 12, UINT32_MAX);
-   }
+   wr16(info + 48, 0x1F00);
+   wr32(info + 52, 0x18);
+   wr32(info + 60, UINT32_MAX);
 
    data = cwav + CWAV_DATA_OFFSET;
    memcpy(data, "DATA", 4);
-   wr32(data + 4, (uint32_t)(0x20 + channel_size * 2));
-   left = data + 0x20;
-   right = left + channel_size;
-   for (i = 0; i < samples; i++)
+   wr32(data + 4, (uint32_t)(0x20 + channel_size));
+   mono = data + 0x20;
+   for (i = 0; i < output_samples; i++)
    {
-      const uint8_t *frame = wav + data_off + i * block_align;
-      left[i * 2] = frame[0];
-      left[i * 2 + 1] = frame[1];
-      if (channels == 2)
+      uint64_t start = (uint64_t)i * sample_rate;
+      uint64_t end = (uint64_t)(i + 1) * sample_rate;
+      size_t first = (size_t)(start / output_rate);
+      size_t last = (size_t)((end + output_rate - 1) / output_rate);
+      int64_t sum = 0;
+      uint64_t weight = 0;
+      size_t j;
+      for (j = first; j < last && j < samples; j++)
       {
-         right[i * 2] = frame[2];
-         right[i * 2 + 1] = frame[3];
+         uint64_t frame_start = (uint64_t)j * output_rate;
+         uint64_t frame_end = frame_start + output_rate;
+         uint64_t low = start > frame_start ? start : frame_start;
+         uint64_t high = end < frame_end ? end : frame_end;
+         const uint8_t *frame = wav + data_off + j * block_align;
+         int32_t sample = pcm16(frame);
+         if (channels == 2)
+            sample = (sample + pcm16(frame + 2)) / 2;
+         sum += (int64_t)sample * (int64_t)(high - low);
+         weight += high - low;
       }
-      else
-      {
-         right[i * 2] = frame[0];
-         right[i * 2 + 1] = frame[1];
-      }
+      wr16(mono + i * 2, (uint16_t)(sum / (int64_t)weight));
    }
 
    *out = cwav;
@@ -156,7 +182,8 @@ static int wav_to_cwav(const uint8_t *wav, size_t wav_size, uint8_t **out,
    return 0;
 }
 
-int wav_to_cwav_file(const char *path, uint8_t **cwav, size_t *cwav_size,
+int wav_to_cwav_file(const char *path, size_t max_cwav_size,
+                     uint8_t **cwav, size_t *cwav_size,
                      char *err, size_t errlen)
 {
    FILE *f;
@@ -192,7 +219,8 @@ int wav_to_cwav_file(const char *path, uint8_t **cwav, size_t *cwav_size,
       return fail(err, errlen, "Could not read the .banner.wav file.");
    }
    fclose(f);
-   result = wav_to_cwav(wav, (size_t)file_size, cwav, cwav_size, err, errlen);
+   result = wav_to_cwav(wav, (size_t)file_size, cwav, cwav_size,
+                        max_cwav_size, err, errlen);
    free(wav);
    return result;
 }

@@ -1,18 +1,16 @@
 /*
- * 3DSX Forwarder: puts SD-card homebrew on the HOME Menu, right from the 3DS.
+ * MULTI-Forwarder: creates HOME Menu forwarders for 3DSX, GBA, SNES and NDS.
  *
- * Pick a .3dsx; the app builds a forwarder CIA for it and installs it.
- * The forwarder starts the Homebrew Launcher loader with the selected path.
+ * The top screen previews the selected title before its forwarder is installed.
  *
  * Name: the app's file name. Icon: a PNG or JPEG next to the app with
  * the same name (Golf.gba -> Golf.png or Golf.jpg, any size), else a
  * cartridge with the game's name on it. Top screen banner: Golf.banner.png
  * or .jpg (best 256x128), else the icon, bigger, with the name. A picture of
- * another shape is padded (the default) or cropped to fit (X on the Games
- * tab). The top screen shows both before anything is made.
+ * another shape is padded to fit. The top screen shows both before anything
+ * is made.
  *
- * Y makes icons for every app in a folder. The "My icons" tab lists and
- * deletes the forwarders made by this app.
+ * The Installed tab lists and deletes the forwarders made by this app.
  *
  * The look (and ui.c, ui_font.c) is gpSP 3D's.
  */
@@ -38,18 +36,24 @@
 #include "cia_patch.h"
 #include "banner.h"
 #include "wav.h"
+#include "sha256.h"
+#include "nds_forwarder_bridge.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
+#define STBI_ONLY_BMP
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.3.5"
+#define ICONMAKER_VERSION "0.4.0"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
-#define OLD_APP_DIR "sdmc:/3ds/3DSX-IconMaker"
-#define APP_DIR     "sdmc:/3ds/3DSX-Forwarder"
+#define FORWARDER_UID_START 0xC0000u
+#define FORWARDER_UID_END   0xFF000u
+#define FORWARDER_UID_COUNT (FORWARDER_UID_END - FORWARDER_UID_START)
+#define OLD_APP_DIR "sdmc:/3ds/3DSX-Forwarder"
+#define APP_DIR     "sdmc:/3ds/MULTI-Forwarder"
 #define LAST_DIR    APP_DIR "/iconmaker_dir.txt"
 #define SETTINGS    APP_DIR "/iconmaker.cfg"
 #define TITLE_IDS   APP_DIR "/title_ids.tsv"
@@ -64,15 +68,13 @@ enum { STYLE_BLUE, STYLE_CLEAR, STYLE_3D, STYLE_COUNT };
 static const char *style_key[STYLE_COUNT] = { "blue", "none", "3d" };
 static int banner_style = STYLE_3D;
 static int banner_cycle;
+static bool nds_custom_icon;
+static bool nds_icon_default_pending = true;
 
 /* A picture of another shape than the icon, banner or tile: shrunk to fit
  * with margins (white on the icon, as the HOME Menu draws see-through
  * parts; the tile's grey on the 3D banner), or
  * scaled to fill it with the sides cut off (X on the Games tab; saved too) */
-enum { FIT_PAD, FIT_CROP, FIT_COUNT };
-static const char *fit_key[FIT_COUNT] = { "pad", "crop" };
-static int fit_mode = FIT_PAD;
-
 #define BOXART_SOURCES 8
 static char boxart_dir[256];
 static char boxart_src[BOXART_SOURCES][256];
@@ -94,7 +96,13 @@ static const char *const pic_types[] = { "png", "jpg", "jpeg" };
 #define PIC_MAX_COEF  (16 << 20)
 #define PIC_MAX_FILE  (16 << 20)
 #define PIC_MAX_FULL  (8 << 20)
-typedef struct { u64 tid; char name[64]; u16 icon24[24 * 24]; int sys; } icon_entry;
+typedef struct
+{
+   u64 tid;
+   char name[64], publisher[64];
+   u16 icon48[48 * 48];
+   int sys;
+} icon_entry;
 
 /* the emulators an icon can start (the publisher on an icon names it) */
 typedef struct
@@ -105,9 +113,9 @@ typedef struct
    int style;                  /* default icon: which cartridge */
    u32 tag_rgb;                /* its name's colour on the banner */
 } emulator;
-enum { SYS_3DSX, SYS_GBA, SYS_SNES, SYS_COUNT };
+enum { SYS_3DSX, SYS_GBA, SYS_SNES, SYS_COUNT, SYS_NDS = SYS_COUNT };
 static const emulator systems[SYS_COUNT] = {
-   { "3DSX", "Homebrew", HBLAUNCHER_TITLE_ID, "", ICON_GBA, 0x23D5C8 },
+   { "3DSX", "3DSX", HBLAUNCHER_TITLE_ID, "", ICON_GBA, 0x23D5C8 },
    { "gpSP 3D", "GBA", 0x000400000BAC8100ULL, "", ICON_GBA, 0x23D5C8 },
    { "Snes9x 3D", "SNES", 0x00040000038A7100ULL, "sdmc:/3ds/snes9x_3ds/launch.txt",
      ICON_SNES, 0xB59CFF },
@@ -118,6 +126,23 @@ static entry entries[MAX_ENTRIES];
 static int nentries, ngames;
 static icon_entry icons[MAX_ICONS];
 static int nicons;
+static bool installed_icons_dirty;
+static int installed_icon_indices[MAX_ICONS];
+static int ninstalled_icons;
+#define MAX_TWL_ICONS 300
+typedef struct
+{
+   u64 tid;
+   char name[64];
+   FS_MediaType media;
+   u16 icon32[32 * 32];
+   u8 icon32_transparent[32 * 32];
+   bool has_icon, is_nds_forwarder;
+} twl_icon_entry;
+static twl_icon_entry twl_icons[MAX_TWL_ICONS];
+static int ntwl_icons;
+static bool twl_titles_dirty;
+static u32 twl_installed_count = 0xFFFFFFFF;
 static char cwd[512] = "sdmc:/";
 typedef struct { char path[256]; u64 tid; } title_record;
 static title_record title_records[MAX_ENTRIES];
@@ -249,7 +274,10 @@ static void tm_log(const char *line)
 #define ROWS      6
 #define FOOT_Y    216
 
-enum { TAB_GAMES, TAB_ICONS };
+enum { TAB_GAMES, TAB_ICONS, TAB_TWL };
+enum { FILTER_ALL, FILTER_3DSX, FILTER_GBA, FILTER_SNES, FILTER_COUNT };
+static int installed_filter = FILTER_ALL;
+static const char *tab_names[3] = { "Make Forwarder", "Installed", "TWL" };
 
 /* SMDH icon (RGB565, 8x8 tiles, Z-order) to a plain RGB565 picture */
 static void smdh_icon_decode(const u8 *src, int size, u16 *out)
@@ -267,9 +295,83 @@ static void smdh_icon_decode(const u8 *src, int size, u16 *out)
                px |= ((k >> (2 * b)) & 1) << b;
                py |= ((k >> (2 * b + 1)) & 1) << b;
             }
+
             out[(y + py) * size + x + px] = src[2 * i] | src[2 * i + 1] << 8;
          }
       }
+}
+
+static void wrap_text_two_lines(const ui_font *font, const char *text, int max_w,
+                                char *first, size_t first_size,
+                                char *second, size_t second_size)
+{
+   const char *p, *break_at = NULL, *last_fit = text;
+   char line[128];
+   size_t len;
+
+   snprintf(first, first_size, "%s", text);
+   second[0] = 0;
+   if (ui_text_w(font, text) <= max_w)
+      return;
+
+   for (p = text; *p; p++)
+   {
+      if (*p == ' ' || *p == '\n')
+      {
+         len = (size_t)(p - text);
+         while (len && (text[len - 1] == ' ' || text[len - 1] == '\n'))
+            len--;
+         if (len < sizeof(line))
+         {
+            memcpy(line, text, len);
+            line[len] = 0;
+            if (ui_text_w(font, line) <= max_w)
+               break_at = p;
+         }
+      }
+      else
+      {
+         const char *next = p;
+         ui_utf8_next(&next);
+         if (next > p + 1)
+            p = next - 1;
+      }
+   }
+
+   if (break_at)
+   {
+      len = (size_t)(break_at - text);
+      while (len && (text[len - 1] == ' ' || text[len - 1] == '\n'))
+         len--;
+      if (len >= first_size) len = first_size - 1;
+      memcpy(first, text, len);
+      first[len] = 0;
+      while (*break_at == ' ' || *break_at == '\n') break_at++;
+      snprintf(second, second_size, "%s", break_at);
+      return;
+   }
+
+   for (p = text; *p; )
+   {
+      const char *next = p;
+      char candidate[128];
+      size_t n;
+      ui_utf8_next(&next);
+      n = (size_t)(next - text);
+      if (n >= sizeof(candidate)) break;
+      memcpy(candidate, text, n);
+      candidate[n] = 0;
+      if (ui_text_w(font, candidate) > max_w)
+         break;
+      last_fit = next;
+      p = next;
+   }
+   len = (size_t)(last_fit - text);
+   if (len >= first_size) len = first_size - 1;
+   memcpy(first, text, len);
+   first[len] = 0;
+   while (*last_fit == ' ' || *last_fit == '\n') last_fit++;
+   snprintf(second, second_size, "%s", last_fit);
 }
 
 static u32 read_u32le(const u8 *p)
@@ -347,10 +449,10 @@ static void smdh_icon_rgba(const u8 *smdh, u8 *rgba)
 /* ------------------------------------------------------------------ */
 
 /* a title's SMDH, read from its ExeFS icon */
-static bool read_title_smdh(u64 tid, u8 *smdh)
+static bool read_title_smdh_media(u64 tid, u8 *smdh, u32 media_type)
 {
    static const u32 file_path[5] = { 0, 0, 2, 0x6E6F6369 /* "icon" */, 0 };
-   u32 arch_path[4] = { (u32)tid, (u32)(tid >> 32), MEDIATYPE_SD, 0 };
+   u32 arch_path[4] = { (u32)tid, (u32)(tid >> 32), media_type, 0 };
    FS_Path ap = { PATH_BINARY, sizeof(arch_path), arch_path };
    FS_Path fp = { PATH_BINARY, sizeof(file_path), file_path };
    Handle h;
@@ -362,25 +464,65 @@ static bool read_title_smdh(u64 tid, u8 *smdh)
    return got == FWDCIA_SMDH_SIZE && !memcmp(smdh, "SMDH", 4);
 }
 
-static void utf16_to_ascii(const u8 *in, int max, char *out, int outlen)
+static bool read_title_smdh(u64 tid, u8 *smdh)
+{
+   return read_title_smdh_media(tid, smdh, MEDIATYPE_SD);
+}
+
+static void utf16_to_ui(const u8 *in, int max, char *out, int outlen)
 {
    int i, k = 0;
    for (i = 0; i < max && k < outlen - 1; i++)
    {
-      u16 c = in[2 * i] | in[2 * i + 1] << 8;
+      u32 c = in[2 * i] | (u32)in[2 * i + 1] << 8;
+      char encoded[3];
+      int n;
       if (!c)
          break;
-      if (c == '\r')
+      if (c == '\r' || c == '\n')
       {
-         if (i + 1 < max && (in[2 * (i + 1)] | in[2 * (i + 1) + 1] << 8) == '\n')
+         if (c == '\r' && i + 1 < max &&
+             (in[2 * (i + 1)] | (u32)in[2 * (i + 1) + 1] << 8) == '\n')
             i++;
-         out[k++] = '\n';
+         if (k && out[k - 1] != ' ')
+            out[k++] = ' ';
+         continue;
       }
-      else if (c == '\n')
-         out[k++] = '\n';
+      if (c >= 0xD800 && c <= 0xDBFF &&
+               i + 1 < max &&
+               (in[2 * (i + 1)] | (u32)in[2 * (i + 1) + 1] << 8) >= 0xDC00 &&
+               (in[2 * (i + 1)] | (u32)in[2 * (i + 1) + 1] << 8) <= 0xDFFF)
+      {
+         i++;
+         c = '?';
+      }
+      else if (c >= 0xD800 && c <= 0xDFFF)
+         c = '?';
+      if (c < 0x80)
+      {
+         encoded[0] = (char)c;
+         n = 1;
+      }
+      else if (c < 0x800)
+      {
+         encoded[0] = (char)(0xC0 | (c >> 6));
+         encoded[1] = (char)(0x80 | (c & 0x3F));
+         n = 2;
+      }
       else
-         out[k++] = c >= 32 && c < 127 ? (char)c : '?';
+      {
+         encoded[0] = (char)(0xE0 | (c >> 12));
+         encoded[1] = (char)(0x80 | ((c >> 6) & 0x3F));
+         encoded[2] = (char)(0x80 | (c & 0x3F));
+         n = 3;
+      }
+      if (k + n >= outlen)
+         break;
+      memcpy(out + k, encoded, n);
+      k += n;
    }
+   while (k && out[k - 1] == ' ')
+      k--;
    out[k] = 0;
 }
 
@@ -389,27 +531,50 @@ static int cmp_icon(const void *a, const void *b)
    return strcasecmp(((const icon_entry*)a)->name, ((const icon_entry*)b)->name);
 }
 
+static int system_of(const char *path);
+
+static void rebuild_installed_filter(void)
+{
+   int i;
+   ninstalled_icons = 0;
+   for (i = 0; i < nicons; i++)
+      if (installed_filter == FILTER_ALL || icons[i].sys == installed_filter - 1)
+         installed_icon_indices[ninstalled_icons++] = i;
+}
+
 static void load_title_records(void)
 {
    char line[320];
    FILE *f;
+   int i;
    ntitle_records = 0;
    if (!(f = fopen(TITLE_IDS, "r")))
       return;
-   while (ntitle_records < MAX_ENTRIES && fgets(line, sizeof(line), f))
+   while (fgets(line, sizeof(line), f))
    {
       char *tab = strrchr(line, '\t');
-      title_record *r;
+      u64 tid;
       if (!tab)
          continue;
       *tab++ = 0;
       if (!*line || strlen(line) >= sizeof(title_records[0].path))
          continue;
-      r = &title_records[ntitle_records];
-      snprintf(r->path, sizeof(r->path), "%s", line);
-      r->tid = strtoull(tab, NULL, 16);
-      if (r->tid)
-         ntitle_records++;
+      tid = strtoull(tab, NULL, 16);
+      if (!tid)
+         continue;
+      for (i = 0; i < ntitle_records; i++)
+         if (!strcmp(title_records[i].path, line))
+         {
+            title_records[i].tid = tid;
+            break;
+         }
+      if (i < ntitle_records)
+         continue;
+      if (ntitle_records >= MAX_ENTRIES)
+         break;
+      snprintf(title_records[ntitle_records].path,
+               sizeof(title_records[ntitle_records].path), "%s", line);
+      title_records[ntitle_records++].tid = tid;
    }
    fclose(f);
 }
@@ -426,6 +591,15 @@ static bool title_id_used(u64 tid)
    return false;
 }
 
+static bool icon_installed_for_system(u64 tid, int sys)
+{
+   int i;
+   for (i = 0; i < nicons; i++)
+      if (icons[i].tid == tid && icons[i].sys == sys)
+         return true;
+   return false;
+}
+
 static bool title_id_recorded(u64 tid)
 {
    int i;
@@ -435,20 +609,443 @@ static bool title_id_recorded(u64 tid)
    return false;
 }
 
-static u64 title_id_for_path(const char *path)
+static bool path_is_nds(const char *path)
+{
+   const char *dot = strrchr(path, '.');
+   return dot && (!strcasecmp(dot, ".nds") || !strcasecmp(dot, ".srl"));
+}
+
+static bool nds_template_category(u8 *category)
+{
+   static const char *paths[] = {
+      "sdmc:/3ds/MULTI-Forwarder/templates/sdcard.nds",
+      "romfs:/templates/sdcard.nds"
+   };
+   size_t i;
+   if (!category)
+      return false;
+   for (i = 0; i < sizeof(paths) / sizeof(paths[0]); i++)
+   {
+      FILE *f = fopen(paths[i], "rb");
+      if (!f)
+         continue;
+      if (!fseek(f, 0x234, SEEK_SET) && fread(category, 1, 1, f) == 1)
+      {
+         fclose(f);
+         return true;
+      }
+      fclose(f);
+      return false;
+   }
+   return false;
+}
+
+static u32 read_le32(const u8 *p)
+{
+   return (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24;
+}
+
+static u64 nds_title_id_for_path(const char *path)
+{
+   u8 code[4], unit_code, category;
+   u64 tid = 0x000480ULL;
+   FILE *f = fopen(path, "rb");
+   int i, start, end, step;
+   if (!f)
+      return 0;
+   if (fseek(f, 0x12, SEEK_SET) || fread(&unit_code, 1, 1, f) != 1 ||
+       fseek(f, unit_code ? 0x230 : 0x0C, SEEK_SET) ||
+       fread(code, 1, sizeof(code), f) != sizeof(code))
+   {
+      fclose(f);
+      return 0;
+   }
+   fclose(f);
+   if (!nds_template_category(&category))
+      return 0;
+   tid = (tid << 8) | category;
+   start = unit_code ? 3 : 0;
+   end = unit_code ? -1 : 4;
+   step = unit_code ? -1 : 1;
+   for (i = start; i != end; i += step)
+      tid = (tid << 8) | code[i];
+   return tid;
+}
+
+static bool nds_bmp_icon_supported(const char *path)
+{
+   u8 header[54];
+   FILE *f = fopen(path, "rb");
+   bool supported;
+   if (!f)
+      return false;
+   supported = fread(header, 1, sizeof(header), f) == sizeof(header) &&
+      header[0] == 'B' && header[1] == 'M' &&
+      read_le32(header + 14) == 40 &&
+      read_le32(header + 18) == 32 && read_le32(header + 22) == 32 &&
+      (header[28] | (u16)header[29] << 8) == 4 &&
+      read_le32(header + 30) == 0 &&
+      read_le32(header + 46) <= 16;
+   fclose(f);
+   return supported;
+}
+
+static bool nds_custom_icon_path(const char *rom_path, char *out, size_t out_size)
+{
+   const char *dot = strrchr(rom_path, '.');
+   struct stat st;
+   snprintf(out, out_size, "%.*s.bmp",
+            dot ? (int)(dot - rom_path) : (int)strlen(rom_path), rom_path);
+   if (nds_bmp_icon_supported(out))
+      return true;
+   {
+      const char *base = strrchr(rom_path, '/');
+      char name[256];
+      base = base ? base + 1 : rom_path;
+      snprintf(name, sizeof(name), "%s", base);
+      dot = strrchr(name, '.');
+      if (dot) name[dot - name] = 0;
+      snprintf(out, out_size, "%s/icons/%s.bmp", APP_DIR, name);
+   }
+   return !stat(out, &st) && nds_bmp_icon_supported(out);
+}
+
+static bool read_nds_custom_icon_bmp(const char *path, twl_icon_entry *icon)
+{
+   u8 header[54], palette[16][4], pixels[32 * 16];
+   u32 palette_count, palette_offset, pixel_offset;
+   FILE *f = fopen(path, "rb");
+   int x, y;
+   bool ok = false;
+   if (!f)
+      return false;
+   if (fread(header, 1, sizeof(header), f) != sizeof(header) ||
+       header[0] != 'B' || header[1] != 'M' ||
+       read_le32(header + 14) != 40 ||
+       read_le32(header + 18) != 32 || read_le32(header + 22) != 32 ||
+       (header[28] | (u16)header[29] << 8) != 4 ||
+       read_le32(header + 30) != 0)
+      goto done;
+   palette_count = read_le32(header + 46);
+   if (!palette_count) palette_count = 16;
+   if (palette_count > 16)
+      goto done;
+   palette_offset = 14 + read_le32(header + 14);
+   pixel_offset = read_le32(header + 10);
+   if (palette_offset > pixel_offset ||
+       fseek(f, (long)palette_offset, SEEK_SET) ||
+       fread(palette, 4, palette_count, f) != palette_count ||
+       fseek(f, (long)pixel_offset, SEEK_SET) ||
+       fread(pixels, 1, sizeof(pixels), f) != sizeof(pixels))
+      goto done;
+   for (y = 0; y < 32; y++)
+   {
+      const u8 *row = pixels + (31 - y) * 16;
+      for (x = 0; x < 32; x++)
+      {
+         u8 packed = row[x / 2];
+         u8 index = x & 1 ? packed & 15 : packed >> 4;
+         const u8 *colour;
+         if (index >= palette_count)
+            goto done;
+         colour = palette[index];
+         icon->icon32[y * 32 + x] = UI_RGB(colour[2], colour[1], colour[0]);
+         icon->icon32_transparent[y * 32 + x] = index == 0;
+      }
+   }
+   icon->has_icon = true;
+   ok = true;
+done:
+   fclose(f);
+   return ok;
+}
+
+static void decode_twl_banner_icon(const u8 *banner, twl_icon_entry *icon)
+{
+   int x, y;
+   utf16_to_ui(banner + 0x340, 0x80, icon->name, sizeof(icon->name));
+   if (!icon->name[0])
+      utf16_to_ui(banner + 0x240, 0x80, icon->name, sizeof(icon->name));
+   for (y = 0; y < 32; y++)
+      for (x = 0; x < 32; x++)
+      {
+         int tile = (y / 8) * 4 + x / 8;
+         int pixel = (y % 8) * 8 + x % 8;
+         u8 packed = banner[0x20 + tile * 32 + pixel / 2];
+         u8 palette_index = pixel & 1 ? packed >> 4 : packed & 15;
+         u16 colour = (u16)(banner[0x220 + palette_index * 2] |
+                            (u16)banner[0x221 + palette_index * 2] << 8);
+         icon->icon32[y * 32 + x] = UI_RGB((colour & 31) * 255 / 31,
+                                             ((colour >> 5) & 31) * 255 / 31,
+                                             ((colour >> 10) & 31) * 255 / 31);
+         icon->icon32_transparent[y * 32 + x] = palette_index == 0;
+      }
+   icon->has_icon = true;
+}
+
+static bool nds_header_title(const u8 *header, char *out, size_t out_size)
+{
+   size_t length = 0;
+   while (length < 12 && length + 1 < out_size &&
+          header[length] >= 32 && header[length] < 127)
+   {
+      out[length] = header[length] == '_' ? ' ' : (char)header[length];
+      length++;
+   }
+   while (length && out[length - 1] == ' ')
+      length--;
+   out[length] = 0;
+   return length > 0;
+}
+
+static void draw_twl_icon_scaled(const twl_icon_entry *icon, int x, int y,
+                                 int size)
+{
+   int dx, dy;
+   for (dy = 0; dy < size; dy++)
+      for (dx = 0; dx < size; dx++)
+      {
+         int sx = dx * 32 / size, sy = dy * 32 / size;
+         int source = sy * 32 + sx;
+         if (!icon->icon32_transparent[source])
+            ui_canvas[(y + dy) * UI_W + x + dx] = icon->icon32[source];
+      }
+}
+
+static bool read_installed_twl_banner(u64 tid, FS_MediaType media,
+                                      twl_icon_entry *icon)
+{
+   u8 header[0x3B4], banner[0x23C0];
+   bool have_header, have_banner;
+   icon->name[0] = 0;
+   have_header = R_SUCCEEDED(FSUSER_GetLegacyRomHeader(media, tid, header));
+   have_banner = R_SUCCEEDED(FSUSER_GetLegacyBannerData(media, tid, banner));
+   if (have_banner)
+      decode_twl_banner_icon(banner, icon);
+   if (!icon->name[0] || !ui_text_supported(icon->name))
+   {
+      if (!have_header || !nds_header_title(header, icon->name, sizeof(icon->name)))
+         icon->name[0] = 0;
+   }
+   return have_banner;
+}
+
+static bool read_nds_banner_icon(const char *path, twl_icon_entry *icon,
+                                 bool use_custom_icon)
+{
+   u8 header[0x240], banner[0x840], custom_banner[0x840];
+   u32 banner_offset;
+   FILE *f = fopen(path, "rb");
+   const char *base = strrchr(path, '/');
+   char basename[256], banner_path[800], icon_path[800], adjacent_path[800];
+   struct stat custom_stat;
+   const char *dot;
+   bool custom_banner_loaded = false;
+   if (!f)
+      return false;
+   if (fread(header, 1, sizeof(header), f) != sizeof(header))
+   {
+      fclose(f);
+      return false;
+   }
+   banner_offset = read_le32(header + 0x68);
+   if (!banner_offset || fseek(f, (long)banner_offset, SEEK_SET) ||
+       fread(banner, 1, sizeof(banner), f) != sizeof(banner))
+   {
+      fclose(f);
+      return false;
+   }
+   fclose(f);
+   base = base ? base + 1 : path;
+   snprintf(basename, sizeof(basename), "%s", base);
+   dot = strrchr(basename, '.');
+   if (dot) basename[dot - basename] = 0;
+   dot = strrchr(path, '.');
+   snprintf(adjacent_path, sizeof(adjacent_path), "%.*s.bin",
+            dot ? (int)(dot - path) : (int)strlen(path), path);
+   if (!stat(adjacent_path, &custom_stat) && custom_stat.st_size == 0x23C0)
+   {
+      f = fopen(adjacent_path, "rb");
+      if (f)
+      {
+         if (fread(custom_banner, 1, sizeof(custom_banner), f) == sizeof(custom_banner))
+         {
+            memcpy(banner, custom_banner, sizeof(banner));
+            custom_banner_loaded = true;
+         }
+         fclose(f);
+      }
+   }
+   snprintf(banner_path, sizeof(banner_path), "%s/banners/%s.bin", APP_DIR, basename);
+   if (!custom_banner_loaded && !stat(banner_path, &custom_stat) &&
+       custom_stat.st_size == 0x23C0)
+   {
+      f = fopen(banner_path, "rb");
+      if (f)
+      {
+         if (fread(custom_banner, 1, sizeof(custom_banner), f) == sizeof(custom_banner))
+         {
+            memcpy(banner, custom_banner, sizeof(banner));
+            custom_banner_loaded = true;
+         }
+         fclose(f);
+      }
+   }
+   decode_twl_banner_icon(banner, icon);
+   if (!icon->name[0] || !ui_text_supported(icon->name))
+      nds_header_title(header, icon->name, sizeof(icon->name));
+   if (!icon->name[0])
+      snprintf(icon->name, sizeof(icon->name), "NDS game");
+   if (use_custom_icon &&
+       nds_custom_icon_path(path, icon_path, sizeof(icon_path)))
+      read_nds_custom_icon_bmp(icon_path, icon);
+   return true;
+}
+
+static bool twl_title_installed(u64 tid)
 {
    int i;
-   u64 tid, prefix;
-   u32 base_uid;
+   for (i = 0; i < ntwl_icons; i++)
+      if (twl_icons[i].tid == tid)
+         return true;
+   return false;
+}
+
+static void add_twl_title(u64 tid, FS_MediaType media)
+{
+   twl_icon_entry *icon;
+   int record;
+   static u8 smdh[FWDCIA_SMDH_SIZE];
+   if (ntwl_icons >= MAX_TWL_ICONS || twl_title_installed(tid))
+      return;
+   icon = &twl_icons[ntwl_icons++];
+   memset(icon, 0, sizeof(*icon));
+   icon->tid = tid;
+   icon->media = media;
+   read_installed_twl_banner(tid, media, icon);
+   for (record = 0; record < ntitle_records; record++)
+      if (title_records[record].tid == tid)
+      {
+         icon->is_nds_forwarder = media == MEDIATYPE_NAND &&
+                                  path_is_nds(title_records[record].path) &&
+                                  title_id_recorded(tid);
+         if (!icon->has_icon)
+         {
+            const char *base = strrchr(title_records[record].path, '/');
+            char *dot;
+            base = base ? base + 1 : title_records[record].path;
+            snprintf(icon->name, sizeof(icon->name), "%s", base);
+            dot = strrchr(icon->name, '.');
+            if (dot) *dot = 0;
+         }
+         if (icon->is_nds_forwarder && !icon->has_icon)
+            read_nds_banner_icon(title_records[record].path, icon, true);
+         break;
+      }
+   if (!icon->has_icon && read_title_smdh_media(tid, smdh, media))
+   {
+      char title[64];
+      utf16_to_ui(smdh + 8 + 0x200, 0x40, title, sizeof(title));
+      if (!title[0])
+         utf16_to_ui(smdh + 8, 0x40, title, sizeof(title));
+      if (title[0] && ui_text_supported(title) &&
+          !icon->name[0] && !icon->is_nds_forwarder)
+         snprintf(icon->name, sizeof(icon->name), "%s", title);
+      {
+         u16 icon48[48 * 48];
+         int x, y;
+         smdh_icon_decode(smdh + 0x24C0, 48, icon48);
+         for (y = 0; y < 32; y++)
+            for (x = 0; x < 32; x++)
+               icon->icon32[y * 32 + x] =
+                  icon48[(y * 48 / 32) * 48 + x * 48 / 32];
+      }
+      icon->has_icon = true;
+   }
+   if (!icon->name[0])
+      snprintf(icon->name, sizeof(icon->name), "TWL %08lX",
+               (unsigned long)(u32)tid);
+   if (!icon->has_icon)
+   {
+      int p;
+      for (p = 0; p < 32 * 32; p++)
+      {
+         icon->icon32[p] = UI_RGB(0x35, 0x3D, 0x4B);
+         icon->icon32_transparent[p] = 0;
+      }
+   }
+}
+
+static bool record_title_id(const char *path, u64 tid);
+
+static void reconcile_nds_title_records(const u64 *ids, u32 count)
+{
+   int record;
+   u32 i;
+   for (record = 0; record < ntitle_records; record++)
+   {
+      u64 expected;
+      if (!path_is_nds(title_records[record].path))
+         continue;
+      expected = nds_title_id_for_path(title_records[record].path);
+      if (!expected || expected == title_records[record].tid)
+         continue;
+      for (i = 0; i < count && i < MAX_TWL_ICONS; i++)
+         if (ids[i] == expected)
+         {
+            record_title_id(title_records[record].path, expected);
+            break;
+         }
+   }
+}
+
+static void read_twl_titles(void)
+{
+   u64 ids[MAX_TWL_ICONS];
+   u64 sd_ids[MAX_TWL_ICONS];
+   u32 count = 0, i;
+   u32 sd_count = 0;
+
+   ntwl_icons = 0;
+   twl_titles_dirty = false;
+   if (multi_nds_title_ids(ids, MAX_TWL_ICONS, &count))
+   {
+      twl_installed_count = 0xFFFFFFFF;
+      return;
+   }
+   twl_installed_count = count;
+   reconcile_nds_title_records(ids, count);
+   for (i = 0; i < count && i < MAX_TWL_ICONS; i++)
+      add_twl_title(ids[i], MEDIATYPE_NAND);
+   if (multi_nds_sd_title_ids(sd_ids, MAX_TWL_ICONS, &sd_count) == 0)
+      for (i = 0; i < sd_count && i < MAX_TWL_ICONS; i++)
+         add_twl_title(sd_ids[i], MEDIATYPE_SD);
+}
+
+static bool nds_services_ready;
+
+static u64 title_id_for_path(const char *path, int sys)
+{
+   int i;
+   u32 offset;
+   u64 tid, prefix, candidate;
+   u32 base_uid, uid;
    for (i = 0; i < ntitle_records; i++)
       if (!strcmp(title_records[i].path, path))
          return title_records[i].tid;
-   tid = fwdcia_title_id_for(path);
+   tid = (sys == SYS_GBA || sys == SYS_SNES)
+      ? fwdcia_iconmaker_title_id_for(path) : fwdcia_title_id_for(path);
+   if (icon_installed_for_system(tid, sys))
+      return tid;
+   if (!title_id_used(tid))
+      return tid;
    prefix = tid & 0xFFFFFFFF000000FFULL;
    base_uid = (u32)(tid >> 8) & 0xFFFFF;
-   for (i = 0; i < 0xF000; i++)
+   for (offset = 1; offset < FORWARDER_UID_COUNT; offset++)
    {
-      u64 candidate = prefix | (u64)(0xF0000 + ((base_uid - 0xF0000 + i) % 0xF000)) << 8;
+      uid = FORWARDER_UID_START +
+         (base_uid - FORWARDER_UID_START + offset) % FORWARDER_UID_COUNT;
+      candidate = prefix | (u64)uid << 8;
       if (!title_id_used(candidate))
          return candidate;
    }
@@ -462,6 +1059,18 @@ static bool record_title_id(const char *path, u64 tid)
    for (i = 0; i < ntitle_records; i++)
       if (!strcmp(title_records[i].path, path))
       {
+         bool failed;
+         if (title_records[i].tid == tid)
+            return true;
+         f = fopen(TITLE_IDS, "a");
+         if (!f)
+            return false;
+         failed = fprintf(f, "%s\t%016llX\n", path,
+                          (unsigned long long)tid) < 0;
+         if (fclose(f) != 0)
+            failed = true;
+         if (failed)
+            return false;
          title_records[i].tid = tid;
          return true;
       }
@@ -483,20 +1092,32 @@ static bool record_title_id(const char *path, u64 tid)
    return true;
 }
 
+static void fwdcia_sha256(const void *data, uint32_t size, uint8_t out[32])
+{
+   sha256(data, size, out);
+}
+
 /* Forwarders made by this app share a publisher and use the reserved range. */
 static void read_icons(void)
 {
    static u8 smdh[FWDCIA_SMDH_SIZE];
    u32 count = 0, got = 0, i;
    u64 *ids;
+   installed_icons_dirty = false;
    nicons = 0;
    noccupied_ids = 0;
    memset(sys_installed, 0, sizeof(sys_installed));
    if (R_FAILED(AM_GetTitleCount(MEDIATYPE_SD, &count)) || !count)
+   {
+      rebuild_installed_filter();
       return;
+   }
    ids = malloc(count * sizeof(u64));
    if (!ids)
+   {
+      rebuild_installed_filter();
       return;
+   }
    if (R_SUCCEEDED(AM_GetTitleList(&got, MEDIATYPE_SD, count, ids)))
       for (i = 0; i < got; i++)
       {
@@ -506,29 +1127,119 @@ static void read_icons(void)
          for (k = 0; k < SYS_COUNT; k++)
             if (ids[i] == systems[k].tid)
                sys_installed[k] = true;
-         if ((ids[i] >> 32) == 0x00040000 && uid >= 0xF0000 && uid < 0xFF000 &&
+         if ((ids[i] >> 32) == 0x00040000 &&
+             uid >= FORWARDER_UID_START && uid < FORWARDER_UID_END &&
              noccupied_ids < (int)(sizeof(occupied_ids) / sizeof(occupied_ids[0])))
             occupied_ids[noccupied_ids++] = ids[i];
-         if ((ids[i] >> 32) != 0x00040000 || uid < 0xF0000 || uid >= 0xFF000)
+         if ((ids[i] >> 32) != 0x00040000 ||
+             uid < FORWARDER_UID_START || uid >= FORWARDER_UID_END)
             continue;
          if (!read_title_smdh(ids[i], smdh))
             continue;
-         utf16_to_ascii(smdh + 8 + 0x180, 0x40, pub, sizeof(pub));   /* English publisher */
-         if (title_id_recorded(ids[i]) || !strcmp(pub, "3DSX Icon Maker") ||
-             !strcmp(pub, "3DSX Forwarder"))
+         utf16_to_ui(smdh + 8 + 0x180, 0x40, pub, sizeof(pub));   /* English publisher */
+         for (k = 0; k < ntitle_records; k++)
+            if (title_records[k].tid == ids[i])
+            {
+               sys = system_of(title_records[k].path);
+               break;
+            }
+         if (sys < 0 && (!strcmp(pub, "3DSX Icon Maker") ||
+                         !strcmp(pub, "3DSX Forwarder")))
             sys = SYS_3DSX;
+         if (sys < 0 && !strcmp(pub, "gpSP 3D"))
+            sys = SYS_GBA;
+         if (sys < 0 && !strcmp(pub, "Snes9x 3D"))
+            sys = SYS_SNES;
          if (sys < 0)
             continue;
          if (nicons >= MAX_ICONS)
             continue;
          icons[nicons].tid = ids[i];
          icons[nicons].sys = sys;
-         utf16_to_ascii(smdh + 8, 0x40, icons[nicons].name, sizeof(icons[0].name));
-         smdh_icon_decode(smdh + 0x2040, 24, icons[nicons].icon24);
+         utf16_to_ui(smdh + 8, 0x40, icons[nicons].name, sizeof(icons[0].name));
+         snprintf(icons[nicons].publisher, sizeof(icons[0].publisher), "%s", pub);
+         smdh_icon_decode(smdh + 0x24C0, 48, icons[nicons].icon48);
          nicons++;
       }
    free(ids);
    qsort(icons, nicons, sizeof(icon_entry), cmp_icon);
+   rebuild_installed_filter();
+}
+
+static bool refresh_installed_icon(const char *path, int sys)
+{
+   static u8 smdh[FWDCIA_SMDH_SIZE];
+   icon_entry fresh;
+   u64 tid = title_id_for_path(path, sys);
+   int i, index = -1;
+   if (!tid || !read_title_smdh(tid, smdh))
+      return false;
+   memset(&fresh, 0, sizeof(fresh));
+   fresh.tid = tid;
+   fresh.sys = sys;
+   utf16_to_ui(smdh + 8, 0x40, fresh.name, sizeof(fresh.name));
+   utf16_to_ui(smdh + 8 + 0x180, 0x40, fresh.publisher, sizeof(fresh.publisher));
+   smdh_icon_decode(smdh + 0x24C0, 48, fresh.icon48);
+   for (i = 0; i < nicons; i++)
+      if (icons[i].tid == tid)
+      {
+         index = i;
+         break;
+      }
+   if (index < 0)
+   {
+      if (nicons >= MAX_ICONS)
+         return false;
+      index = nicons++;
+   }
+   icons[index] = fresh;
+   if ((tid >> 32) == 0x00040000)
+   {
+      u32 uid = (u32)tid >> 8;
+      if (uid >= FORWARDER_UID_START && uid < FORWARDER_UID_END &&
+          noccupied_ids < (int)(sizeof(occupied_ids) / sizeof(occupied_ids[0])))
+      {
+         bool found = false;
+         for (i = 0; i < noccupied_ids; i++)
+            if (occupied_ids[i] == tid)
+               found = true;
+         if (!found)
+            occupied_ids[noccupied_ids++] = tid;
+      }
+   }
+   qsort(icons, nicons, sizeof(icon_entry), cmp_icon);
+   rebuild_installed_filter();
+   return true;
+}
+
+static void remove_installed_icon(u64 tid)
+{
+   int i, j;
+   for (i = 0; i < nicons; i++)
+      if (icons[i].tid == tid)
+      {
+         for (j = i + 1; j < nicons; j++)
+            icons[j - 1] = icons[j];
+         nicons--;
+         rebuild_installed_filter();
+         return;
+      }
+}
+
+static void set_game_installed_badge(u64 tid, bool installed)
+{
+   int i, j;
+   for (i = 0; i < ntitle_records; i++)
+      if (title_records[i].tid == tid)
+         for (j = 0; j < nentries; j++)
+         {
+            char path[800];
+            if (entries[j].dir)
+               continue;
+            snprintf(path, sizeof(path), "%s%s", cwd, entries[j].name);
+            if (!strcmp(path, title_records[i].path))
+               entries[j].has_icon = installed;
+         }
 }
 
 static bool icon_installed(u64 tid)
@@ -540,13 +1251,31 @@ static bool icon_installed(u64 tid)
    return false;
 }
 
+static bool dialog_with_default(const char *title, const char *body,
+                                const char *ok, const char *cancel,
+                                u16 ok_color, bool default_ok);
+
+static bool dialog(const char *title, const char *body, const char *ok,
+                   const char *cancel, u16 ok_color)
+{
+   return dialog_with_default(title, body, ok, cancel, ok_color, false);
+}
+
 /* ------------------------------------------------------------------ */
 /* the file list                                                       */
 /* ------------------------------------------------------------------ */
 
 static int system_of_ext(const char *dot)
 {
-   return dot && !strcasecmp(dot, ".3dsx") ? SYS_3DSX : -1;
+   if (!dot) return -1;
+   if (!strcasecmp(dot, ".3dsx")) return SYS_3DSX;
+   if (!strcasecmp(dot, ".gba")) return SYS_GBA;
+   if (!strcasecmp(dot, ".sfc") || !strcasecmp(dot, ".smc") ||
+       !strcasecmp(dot, ".fig") ||
+       !strcasecmp(dot, ".bs") || !strcasecmp(dot, ".bsx")) return SYS_SNES;
+   if (!strcasecmp(dot, ".nds") || !strcasecmp(dot, ".srl")) return SYS_NDS;
+   if (!strcasecmp(dot, ".zip")) return SYS_GBA;
+   return -1;
 }
 
 /* Whether a path is a launchable homebrew executable. */
@@ -674,7 +1403,9 @@ static void read_dir(void)
       entries[nentries].has_icon = false;
       if (!dir)
       {
-         entries[nentries].has_icon = icon_installed(title_id_for_path(path));
+         entries[nentries].has_icon = sys == SYS_NDS
+            ? twl_title_installed(nds_title_id_for_path(path))
+            : icon_installed(title_id_for_path(path, entries[nentries].sys));
          ngames++;
       }
       nentries++;
@@ -715,6 +1446,7 @@ static void enter(const char *name)
    }
    cache_clear();
    read_dir();
+   nds_icon_default_pending = true;
 }
 
 static void leave_folder(int *sel)
@@ -876,10 +1608,7 @@ static u8 *load_picture(const char *game, const char *ext, int type, int min_w, 
 /* a picture to ow x oh, padded or cropped (fit_mode) */
 static void fit_picture(const u8 *img, int w, int h, u8 *out, int ow, int oh)
 {
-   if (fit_mode == FIT_CROP)
-      image_fill(img, w, h, out, ow, oh);
-   else
-      image_fit(img, w, h, out, ow, oh);
+   image_fit(img, w, h, out, ow, oh);
 }
 
 /* Text in one of gpSP 3D's fonts onto an RGBA picture (w wide), with a
@@ -1042,6 +1771,7 @@ static void name_strip(const char *title, int sys, u8 *strip)
 typedef struct
 {
    u8 icon48[48 * 48 * 4];
+   u8 preview_icon[96 * 96 * 4];
    u8 banner[256 * 128 * 4];     /* what the top screen previews (flat) */
    u8 name[256 * 64 * 4];        /* 3D: the name strip under the tile */
    u8 label[128 * 128 * 4];      /* 3D: the icon, on the tile */
@@ -1073,16 +1803,16 @@ static void make_art(const char *path, const entry *e, game_art *a)
    if (has_smdh)
    {
       int lang;
-      utf16_to_ascii(smdh + 8 + 0x200, 0x40, a->title, sizeof(a->title));
+      utf16_to_ui(smdh + 8 + 0x200, 0x40, a->title, sizeof(a->title));
       for (lang = 0; !a->title[0] && lang < 16; lang++)
-         utf16_to_ascii(smdh + 8 + (size_t)lang * 0x200, 0x40,
-                        a->title, sizeof(a->title));
+         utf16_to_ui(smdh + 8 + (size_t)lang * 0x200, 0x40,
+                     a->title, sizeof(a->title));
       if (!a->title[0])
          snprintf(a->title, sizeof(a->title), "%.*s", n > 63 ? 63 : n, name);
-      utf16_to_ascii(smdh + 8 + 0x200 + 0x180, 0x40, a->publisher, sizeof(a->publisher));
+      utf16_to_ui(smdh + 8 + 0x200 + 0x180, 0x40, a->publisher, sizeof(a->publisher));
       for (lang = 0; !a->publisher[0] && lang < 16; lang++)
-         utf16_to_ascii(smdh + 8 + (size_t)lang * 0x200 + 0x180, 0x40,
-                        a->publisher, sizeof(a->publisher));
+         utf16_to_ui(smdh + 8 + (size_t)lang * 0x200 + 0x180, 0x40,
+                     a->publisher, sizeof(a->publisher));
    }
    icon_png = load_picture(path, "", e->pic[0], 128, 128, &iw, &ih, &big);
    a->has_icon_png = icon_png != NULL;
@@ -1163,6 +1893,177 @@ static void make_art(const char *path, const entry *e, game_art *a)
       }
       tm_mark("3D: tile");
    }
+   if (!a->flat && (sys == SYS_GBA || sys == SYS_SNES))
+      image_fit(a->label, 128, 128, a->preview_icon, 96, 96);
+}
+
+static Result install_cia_buf(const u8 *cia, u32 size);
+
+static int make_nds_forwarder(const char *path, const char *custom_title,
+                              char *err, int errlen)
+{
+   u64 tid = nds_title_id_for_path(path);
+   bool already_installed = twl_title_installed(tid);
+   if (!nds_services_ready)
+   {
+      snprintf(err, errlen, "NDS forwarder services are unavailable.");
+      return -1;
+   }
+   if (!tid)
+   {
+      snprintf(err, errlen, "Could not read the NDS game code.");
+      return -1;
+   }
+   if (!twl_title_installed(tid) && twl_installed_count != 0xFFFFFFFF &&
+       twl_installed_count >= 40)
+   {
+      snprintf(err, errlen, "The 40-title TWL forwarder limit has been reached.");
+      return -1;
+   }
+   if (multi_nds_build_install(path, custom_title, err, errlen))
+      return -1;
+   if (!record_title_id(path, tid))
+   {
+      snprintf(err, errlen, "The NDS forwarder installed, but its title record could not be saved.");
+      return -1;
+   }
+   if (!already_installed && twl_installed_count != 0xFFFFFFFF)
+      twl_installed_count++;
+   add_twl_title(tid, MEDIATYPE_NAND);
+   return 0;
+}
+
+static int make_rom_icon(const char *path, const entry *e,
+                         const char *custom_title, const char *custom_publisher,
+                         char *err, int errlen)
+{
+   static game_art art;
+   static u8 *smdh;
+   char template_path[64], wav_path[800], long_title[128];
+   FILE *f = NULL;
+   u8 *cia = NULL, *cwav = NULL;
+   long cia_len;
+   size_t cwav_size = 0;
+   size_t banner_reserved;
+   uint32_t audio_capacity;
+   int result = -1;
+   u64 tid;
+   cia_t parsed;
+   fwdcia_params params;
+   Result install_result;
+   u8 *template_banner;
+   const char *dot = strrchr(path, '.');
+
+   make_art(path, e, &art);
+   if (custom_title && custom_title[0])
+      snprintf(art.title, sizeof(art.title), "%s", custom_title);
+   tid = title_id_for_path(path, e->sys);
+   if (!tid)
+   {
+      snprintf(err, errlen, "No available HOME Menu title IDs remain.");
+      return -1;
+   }
+   snprintf(template_path, sizeof(template_path), art.flat
+            ? "romfs:/template-gpsp3d.cia"
+            : "romfs:/template-gpsp3d-3d.cia");
+   if (!(f = fopen(template_path, "rb")) || fseek(f, 0, SEEK_END) ||
+       (cia_len = ftell(f)) <= 0 || cia_len > UINT32_MAX || fseek(f, 0, SEEK_SET))
+   {
+      if (f) fclose(f);
+      snprintf(err, errlen, "Could not read the ROM forwarder template.");
+      return -1;
+   }
+   cia = malloc((size_t)cia_len);
+   if (!cia || fread(cia, 1, (size_t)cia_len, f) != (size_t)cia_len)
+   {
+      fclose(f);
+      free(cia);
+      snprintf(err, errlen, "Could not load the ROM forwarder template.");
+      return -1;
+   }
+   fclose(f);
+   f = NULL;
+   if (cia_open(&parsed, cia, (size_t)cia_len) != CIA_OK ||
+       !(smdh = cia_icon_data(&parsed)))
+   {
+      free(cia);
+      snprintf(err, errlen, "The ROM forwarder template is invalid.");
+      return -1;
+   }
+   snprintf(long_title, sizeof(long_title), "%.110s", art.title);
+   smdh_set(smdh, art.title, long_title,
+            custom_publisher ? custom_publisher : systems[e->sys].name,
+            art.icon48);
+
+   memset(&params, 0, sizeof(params));
+   params.title_id = tid;
+   params.target = systems[e->sys].tid;
+   params.launch = systems[e->sys].launch;
+   params.path = path;
+   params.smdh = smdh;
+   params.banner = art.flat ? art.banner : art.name;
+   params.label = art.flat ? NULL : art.label;
+
+   if (dot && (size_t)(dot - path) + sizeof(".banner.wav") <= sizeof(wav_path))
+   {
+      snprintf(wav_path, sizeof(wav_path), "%.*s.banner.wav", (int)(dot - path), path);
+      template_banner = cia_banner_data(&parsed, &banner_reserved);
+      if (!template_banner || banner_reserved > UINT32_MAX ||
+          banner_sound_capacity(template_banner, (uint32_t)banner_reserved,
+                                &audio_capacity, err, errlen))
+      {
+         free(cia);
+         return -1;
+      }
+      result = wav_to_cwav_file(wav_path, audio_capacity, &cwav, &cwav_size,
+                                err, errlen);
+      if (result < 0)
+      {
+         free(cia);
+         return -1;
+      }
+      if (result == 0)
+      {
+         if (cwav_size > UINT32_MAX)
+         {
+            free(cwav);
+            free(cia);
+            snprintf(err, errlen, "The custom banner sound is too large.");
+            return -1;
+         }
+         params.cwav = cwav;
+         params.cwav_size = (uint32_t)cwav_size;
+      }
+   }
+
+   result = fwdcia_make(cia, (uint32_t)cia_len, &params, fwdcia_sha256, err, errlen);
+   free(cwav);
+   if (result)
+   {
+      free(cia);
+      return -1;
+   }
+   if (!record_title_id(path, tid))
+   {
+      free(cia);
+      snprintf(err, errlen, "Could not save the title-ID record in %s.", APP_DIR);
+      return -1;
+   }
+   install_result = install_cia_buf(cia, (u32)cia_len);
+   if (R_FAILED(install_result) && R_DESCRIPTION(install_result) == RD_ALREADY_EXISTS)
+   {
+      AM_DeleteTitle(MEDIATYPE_SD, tid);
+      AM_DeleteTicket(tid);
+      install_result = install_cia_buf(cia, (u32)cia_len);
+   }
+   free(cia);
+   if (R_FAILED(install_result))
+   {
+      snprintf(err, errlen, "Install failed (%08lX).\nUse Luma3DS with signature patches.",
+               (unsigned long)install_result);
+      return -1;
+   }
+   return 0;
 }
 
 /* Make and install the icon for the game at path. Returns 0, or -1 with a
@@ -1191,6 +2092,7 @@ static int apply_custom_banner_sound(cia_t *parsed, u8 *banner,
    char wav_path[800];
    uint8_t *cwav = NULL, *copy = NULL;
    size_t cwav_size = 0;
+   uint32_t audio_capacity;
    uint32_t banner_len;
    int result;
 
@@ -1204,7 +2106,12 @@ static int apply_custom_banner_sound(cia_t *parsed, u8 *banner,
       snprintf(err, errlen, "Could not create the .banner.wav path.");
       return -1;
    }
-   result = wav_to_cwav_file(wav_path, &cwav, &cwav_size, err, errlen);
+   if (banner_size > UINT32_MAX ||
+       banner_sound_capacity(banner, (uint32_t)banner_size, &audio_capacity,
+                             err, errlen))
+      return -1;
+   result = wav_to_cwav_file(wav_path, audio_capacity, &cwav, &cwav_size,
+                             err, errlen);
    if (result == 1)
       return 0;
    if (result < 0)
@@ -1254,6 +2161,11 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
    Result r;
    bool has_app_smdh;
 
+   if (e->sys == SYS_NDS)
+      return make_nds_forwarder(path, custom_title, err, errlen);
+   if (e->sys == SYS_GBA || e->sys == SYS_SNES)
+      return make_rom_icon(path, e, custom_title, custom_publisher, err, errlen);
+
    make_art(path, e, &art);
    if (custom_title && custom_title[0])
    {
@@ -1275,7 +2187,7 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
       snprintf(err, errlen, "The SD path is too long for a CIA forwarder.");
       return -1;
    }
-   tid = title_id_for_path(path);
+   tid = title_id_for_path(path, e->sys);
    if (!tid)
    {
       snprintf(err, errlen, "No available HOME Menu title IDs remain.");
@@ -1617,43 +2529,168 @@ static int text_lines(const ui_font *f, int x, int y, int dy, const char *s, u16
 static void draw_header(void)
 {
    ui_vgradient(0, 0, UI_W, TAB_Y, C_BG2, C_BG);
-   ui_text_center(&ui_font_title, UI_W / 2, 3, "3DSX Forwarder", C_TEXT);
+   ui_text_center(&ui_font_title, UI_W / 2, 3, "MULTI-FORWARDER", C_TEXT);
    ui_text_right(&ui_font_small, UI_W - 10, 10, "v" ICONMAKER_VERSION, C_DIM);
+}
+
+static void tab_layout(int x[3], int w[3])
+{
+   int i, gap = 8, total = gap * 2;
+   for (i = 0; i < 3; i++)
+   {
+      w[i] = ui_text_w(&ui_font_body, tab_names[i]) + 24;
+      total += w[i];
+   }
+   x[0] = (UI_W - total) / 2;
+   for (i = 1; i < 3; i++)
+      x[i] = x[i - 1] + w[i - 1] + gap;
 }
 
 static void draw_tabs(int tab)
 {
-   static const char *names[2] = { "Make Forwarder", "Installed" };
-   int i, tw = UI_W / 2;
-   for (i = 0; i < 2; i++)
+   int i, x[3], w[3];
+   tab_layout(x, w);
+   for (i = 0; i < 3; i++)
    {
-      int x = i * tw, on = i == tab;
-      ui_rrect(x + 6, TAB_Y, tw - 12, TAB_H, 10,
+      int on = i == tab;
+      ui_rrect(x[i], TAB_Y, w[i], TAB_H, 10,
                on ? C_ROW_SEL : UI_RGB(0x1C, 0x20, 0x29));
       if (on)
-         ui_fill(x + tw / 2 - 14, TAB_Y + TAB_H - 3, 28, 3, C_ACCENT);
-      ui_text_vc(&ui_font_body, x + (tw - ui_text_w(&ui_font_body, names[i])) / 2, TAB_Y, TAB_H - 2,
-                 names[i], on ? C_TEXT : C_DIM, 0);
+         ui_fill(x[i] + w[i] / 2 - 14, TAB_Y + TAB_H - 3, 28, 3, C_ACCENT);
+      ui_text_vc(&ui_font_body, x[i] + (w[i] - ui_text_w(&ui_font_body, tab_names[i])) / 2,
+                 TAB_Y, TAB_H - 2, tab_names[i], on ? C_TEXT : C_DIM, 0);
    }
+}
+
+static void draw_control_hints_at(const char *keys, int max_width, int y, int height)
+{
+   const char *p = keys;
+   int x = 10;
+   while (*p && x < 10 + max_width)
+   {
+      const char *colon = strchr(p, ':');
+      const char *next;
+      char button[32], detail[128];
+      size_t button_len, detail_len;
+      int button_width, detail_width, filter_width = 0, filter_tail_width = 0;
+      int colon_width;
+      bool highlight_filter;
+      if (!colon)
+      {
+         ui_text_vc(&ui_font_small, x, y, height, p, C_DIM, 0);
+         break;
+      }
+      next = strstr(colon + 1, "   ");
+      button_len = (size_t)(colon - p);
+      if (button_len >= sizeof(button))
+         button_len = sizeof(button) - 1;
+      memcpy(button, p, button_len);
+      button[button_len] = 0;
+      detail_len = next ? (size_t)(next - colon - 1) : strlen(colon + 1);
+      if (detail_len >= sizeof(detail))
+         detail_len = sizeof(detail) - 1;
+      memcpy(detail, colon + 1, detail_len);
+      detail[detail_len] = 0;
+      highlight_filter = !strcmp(button, "Y") && detail_len >= 7 &&
+                        !strncmp(detail, " Filter", 7);
+      button_width = ui_text_w(&ui_font_bold, button);
+      if (highlight_filter)
+      {
+         filter_width = ui_text_w(&ui_font_bold, ": Filter");
+         filter_tail_width = ui_text_w(&ui_font_small, detail + 7);
+         detail_width = filter_width + filter_tail_width;
+         colon_width = 0;
+      }
+      else
+      {
+         detail_width = ui_text_w(&ui_font_small, detail);
+         colon_width = ui_text_w(&ui_font_small, ":");
+      }
+      if (x + button_width + colon_width + detail_width > 10 + max_width)
+         break;
+      ui_text_vc(&ui_font_bold, x, y, height, button, C_TEXT, 0);
+      x += button_width;
+      if (highlight_filter)
+      {
+         ui_text_vc(&ui_font_bold, x, y, height, ": Filter", C_TEXT, 0);
+         x += filter_width;
+         if (detail[7])
+            ui_text_vc(&ui_font_small, x, y, height, detail + 7, C_DIM, 0);
+      }
+      else
+      {
+         ui_text_vc(&ui_font_small, x, y, height, ":", C_TEXT, 0);
+         x += colon_width;
+         ui_text_vc(&ui_font_small, x, y, height, detail, C_DIM, 0);
+      }
+      x += detail_width + 12;
+      if (!next)
+         break;
+      p = next + 3;
+   }
+}
+
+static void draw_control_hints(const char *keys, int max_width)
+{
+   draw_control_hints_at(keys, max_width, FOOT_Y, UI_H - FOOT_Y);
+}
+
+static void draw_right_control_hint(const char *button, const char *detail,
+                                    int right, int y, int height)
+{
+   int button_width = ui_text_w(&ui_font_bold, button);
+   int colon_width = ui_text_w(&ui_font_small, ":");
+   int detail_width = ui_text_w(&ui_font_small, detail);
+   int x = right - button_width - colon_width - detail_width;
+   ui_text_vc(&ui_font_bold, x, y, height, button, C_TEXT, 0);
+   x += button_width;
+   ui_text_vc(&ui_font_small, x, y, height, ":", C_TEXT, 0);
+   x += colon_width;
+   ui_text_vc(&ui_font_small, x, y, height, detail, C_DIM, 0);
 }
 
 static void draw_footer(const char *keys)
 {
    ui_fill(0, FOOT_Y, UI_W, UI_H - FOOT_Y, C_BG2);
    ui_fill(0, FOOT_Y, UI_W, 1, C_PANEL);
-   ui_text_vc(&ui_font_small, 10, FOOT_Y, UI_H - FOOT_Y, keys, C_DIM, UI_W - 20);
+   draw_control_hints(keys, UI_W - 20);
 }
 
 static void draw_installed_footer(int count)
 {
    char total[16];
-   const char *keys = count ? "L: Back   X: Uninstall This Forwarder" : "L: Back";
+   char filter_hint[64];
+   const char *filter_name =
+      installed_filter == FILTER_ALL ? "ALL" :
+      installed_filter == FILTER_3DSX ? "3DSX" :
+      installed_filter == FILTER_GBA ? "GBA" : "SNES";
 
    ui_fill(0, FOOT_Y, UI_W, UI_H - FOOT_Y, C_BG2);
    ui_fill(0, FOOT_Y, UI_W, 1, C_PANEL);
    snprintf(total, sizeof(total), "(%d)", count);
-   ui_text_vc(&ui_font_small, 10, FOOT_Y, UI_H - FOOT_Y, keys, C_DIM, UI_W - 48);
+   snprintf(filter_hint, sizeof(filter_hint), "Y: Filter - %s", filter_name);
+   draw_control_hints_at(filter_hint, UI_W - 110, TAB_Y + TAB_H,
+                         LIST_Y - TAB_Y - TAB_H);
+   draw_control_hints("L / R: Switch Tabs", UI_W - 52);
    ui_text_right(&ui_font_small, UI_W - 10, FOOT_Y + 5, total, C_DIM);
+   if (count)
+      draw_right_control_hint("X", "Uninstall", UI_W - 8, TAB_Y + TAB_H,
+                              LIST_Y - TAB_Y - TAB_H);
+}
+
+static void draw_twl_footer(bool can_uninstall)
+{
+   char total[24];
+   const char *keys = "L / R: Switch Tabs";
+   snprintf(total, sizeof(total), twl_installed_count == 0xFFFFFFFF
+            ? "(?/40)" : "(%lu/40)", (unsigned long)twl_installed_count);
+   ui_fill(0, FOOT_Y, UI_W, UI_H - FOOT_Y, C_BG2);
+   ui_fill(0, FOOT_Y, UI_W, 1, C_PANEL);
+   draw_control_hints(keys, UI_W - 64);
+   ui_text_right(&ui_font_small, UI_W - 10, FOOT_Y + 5, total, C_DIM);
+   if (can_uninstall)
+      draw_right_control_hint("X", "Uninstall", UI_W - 8, TAB_Y + TAB_H,
+                              LIST_Y - TAB_Y - TAB_H);
 }
 
 static void draw_scrollbar(int n, int top)
@@ -1678,16 +2715,21 @@ static void draw_bottom(int tab, int sel, int top)
    {
       char info[64];
       static const char *const style_short[STYLE_COUNT] = { "blue", "no background", "3D" };
-      int iw;
-      snprintf(info, sizeof(info), "SELECT: %s   X: %s",
-               entries[sel].pic[1] >= 0 && banner_cycle == 0
-                  ? "custom" : style_short[banner_style],
-               fit_key[fit_mode]);
+      int iw, select_x, select_w;
+      snprintf(info, sizeof(info), "%s",
+               entries[sel].sys == SYS_NDS
+                  ? nds_custom_icon ? "Custom" : "Default"
+                  : entries[sel].pic[1] >= 0 && banner_cycle == 0
+                     ? "custom" : style_short[banner_style]);
       iw = ui_text_w(&ui_font_small, info);
-      ui_text(&ui_font_small, 10, LIST_Y - 18, cwd + 5, C_FAINT, UI_W - 30 - iw);
+      select_w = ui_text_w(&ui_font_small, "SELECT:");
+      select_x = UI_W - 10 - iw - 8 - select_w;
+      ui_text(&ui_font_small, 10, LIST_Y - 18, cwd + 5, C_FAINT,
+              select_x > 18 ? select_x - 18 : 0);
+      ui_text(&ui_font_small, select_x, LIST_Y - 18, "SELECT:", C_TEXT, select_w);
       ui_text_right(&ui_font_small, UI_W - 10, LIST_Y - 18, info, C_DIM);
       if (!nentries)
-         ui_text_center(&ui_font_body, UI_W / 2, 130, "No folders or .3dsx apps here", C_DIM);
+         ui_text_center(&ui_font_body, UI_W / 2, 130, "No folders or supported files here", C_DIM);
       for (i = 0; i < ROWS && top + i < nentries; i++)
       {
          const entry *e = &entries[top + i];
@@ -1717,24 +2759,24 @@ static void draw_bottom(int tab, int sel, int top)
       draw_scrollbar(nentries, top);
       if (strcmp(cwd, "sdmc:/"))
          snprintf(keys, sizeof(keys), !nentries || entries[sel].dir
-                  ? "B: Back   A: Open   Y: Install ALL   R: Installed"
-                  : "B: Back   A: Create Forwarder   Y: Install ALL   R: Installed");
+                  ? "L / R: Switch Tabs   B: Back   A: Open"
+                  : "L / R: Switch Tabs   B: Back   A: Make Forwarder");
       else
          snprintf(keys, sizeof(keys), !nentries || entries[sel].dir
-                  ? "A: Open   Y: Install ALL   R: Installed"
-                  : "A: Create Forwarder   Y: Install ALL   R: Installed");
+                  ? "L / R: Switch Tabs   A: Open"
+                  : "L / R: Switch Tabs   A: Make Forwarder");
       draw_footer(keys);
    }
-   else
+   else if (tab == TAB_ICONS)
    {
-      if (!nicons)
+      if (!ninstalled_icons)
       {
          ui_text_center(&ui_font_body, UI_W / 2, 120, "No icons yet", C_DIM);
          ui_text_center(&ui_font_small, UI_W / 2, 142, "Pick an app in Make Forwarder and press A", C_FAINT);
       }
-      for (i = 0; i < ROWS && top + i < nicons; i++)
+      for (i = 0; i < ROWS && top + i < ninstalled_icons; i++)
       {
-         const icon_entry *ic = &icons[top + i];
+         const icon_entry *ic = &icons[installed_icon_indices[top + i]];
          int y = LIST_Y + i * ROW_H, h = ROW_H - 2, s = top + i == sel;
          if (s)
          {
@@ -1742,11 +2784,11 @@ static void draw_bottom(int tab, int sel, int top)
             ui_fill(ROW_X, y + 5, 3, h - 10, C_ACCENT);
          }
          {
-            /* the small icon, 24x24 shown at 19x19 by skipping rows/columns */
             int px, py;
             for (py = 0; py < 19; py++)
                for (px = 0; px < 19; px++)
-                  ui_canvas[(y + 1 + py) * UI_W + ROW_X + 9 + px] = ic->icon24[(py * 24 / 19) * 24 + px * 24 / 19];
+                  ui_canvas[(y + 1 + py) * UI_W + ROW_X + 9 + px] =
+                     ic->icon48[(py * 48 / 19) * 48 + px * 48 / 19];
          }
          {
             char single_line[sizeof(ic->name)];
@@ -1758,11 +2800,38 @@ static void draw_bottom(int tab, int sel, int top)
                        s ? C_TEXT : C_TEXT2, ROW_W - 90);
          }
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10, y + (h - ui_font_small.ascent) / 2 - 1,
-                       ic->sys == SYS_3DSX ? "INSTALLED" : systems[ic->sys].console,
+                       systems[ic->sys].console,
                        ic->sys == SYS_SNES ? C_ACCENT2 : C_ACCENT);
       }
-      draw_scrollbar(nicons, top);
-      draw_installed_footer(nicons);
+      draw_scrollbar(ninstalled_icons, top);
+      draw_installed_footer(ninstalled_icons);
+   }
+   else
+   {
+      if (!ntwl_icons)
+      {
+         ui_text_center(&ui_font_body, UI_W / 2, 120, "No TWL titles found", C_DIM);
+         ui_text_center(&ui_font_small, UI_W / 2, 142, "Make an NDS forwarder from the first tab", C_FAINT);
+      }
+      for (i = 0; i < ROWS && top + i < ntwl_icons; i++)
+      {
+         const twl_icon_entry *ic = &twl_icons[top + i];
+         int y = LIST_Y + i * ROW_H, h = ROW_H - 2, s = top + i == sel;
+         if (s)
+         {
+            ui_rrect(ROW_X, y, ROW_W, h, 7, C_ROW_SEL);
+            ui_fill(ROW_X, y + 5, 3, h - 10, C_ACCENT);
+         }
+         draw_twl_icon_scaled(ic, ROW_X + 9, y + 1, 19);
+         ui_text_vc(&ui_font_body, ROW_X + 36, y, h, ic->name,
+                    s ? C_TEXT : C_TEXT2, ROW_W - 90);
+         ui_text_right(&ui_font_small, ROW_X + ROW_W - 10,
+                       y + (h - ui_font_small.ascent) / 2 - 1,
+                       ic->is_nds_forwarder ? "NDS" : "TWL",
+                       ic->is_nds_forwarder ? C_ACCENT : C_DIM);
+      }
+      draw_scrollbar(ntwl_icons, top);
+      draw_twl_footer(ntwl_icons && twl_icons[sel].is_nds_forwarder);
    }
 }
 
@@ -1774,10 +2843,11 @@ static void top_bg(void)
    ui_vgradient(0, 0, UI_W, UI_H, C_BG2, C_BG);
 }
 
-static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, int text_x, int text_y)
+static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y,
+                                   int text_x)
 {
-   char line[144];
-   int text_y_next = text_y;
+   char first[64], second[64];
+   int text_y_next, title_lines = 0, block_height, max_w = UI_W - text_x - 8;
    if (icon_x < 0)
    {
       memcpy(top_left_icon, a->icon48, sizeof(top_left_icon));
@@ -1791,15 +2861,24 @@ static void draw_top_game_metadata(const game_art *a, int icon_x, int icon_y, in
    }
    if (a->title[0])
    {
-      snprintf(line, sizeof(line), "%s", a->title);
-      ui_text(&ui_font_body, text_x, text_y, line, C_TEXT, UI_W - text_x - 8);
-      text_y_next += 16;
+      wrap_text_two_lines(&ui_font_body, a->title, max_w,
+                          first, sizeof(first), second, sizeof(second));
+      title_lines = second[0] ? 2 : 1;
+   }
+   block_height = title_lines * 18 + (a->publisher[0] ? 16 : 0);
+   text_y_next = icon_y + (56 - block_height) / 2;
+   if (title_lines)
+   {
+      ui_text(&ui_font_body, text_x, text_y_next, first, C_TEXT, max_w);
+      text_y_next += 18;
+      if (second[0])
+      {
+         ui_text(&ui_font_body, text_x, text_y_next, second, C_TEXT, max_w);
+         text_y_next += 18;
+      }
    }
    if (a->publisher[0])
-   {
-      snprintf(line, sizeof(line), "%s", a->publisher);
-      ui_text(&ui_font_small, text_x, text_y_next, line, C_DIM, UI_W - text_x - 8);
-   }
+      ui_text(&ui_font_small, text_x, text_y_next, a->publisher, C_DIM, max_w);
 }
 
 static void draw_top_game(const game_art *a)
@@ -1807,11 +2886,19 @@ static void draw_top_game(const game_art *a)
    top_bg();
    if (!a->flat)
    {
+      char first[64], second[64];
       ui_rrect(42, 0, 236, 168, 7, C_BG);
       ui_rrect_outline(42, 0, 236, 168, 7, 1, C_FAINT);
       ui_rrect(104, 0, 112, 108, 16, C_PANEL);
-      blit_rgba(a->icon48, 48, 48, 112, 4, 2);
-      ui_text_center(&ui_font_title, UI_W / 2, 116, a->title, C_TEXT);
+      if (a->sys == SYS_GBA || a->sys == SYS_SNES)
+         blit_rgba(a->preview_icon, 96, 96, 112, 4, 1);
+      else
+         blit_rgba(a->icon48, 48, 48, 112, 4, 2);
+      wrap_text_two_lines(&ui_font_title, a->title, 216,
+                          first, sizeof(first), second, sizeof(second));
+      ui_text_center(&ui_font_title, UI_W / 2, 108, first, C_TEXT);
+      if (second[0])
+         ui_text_center(&ui_font_title, UI_W / 2, 127, second, C_TEXT);
       ui_text_center(&ui_font_small, UI_W / 2, 151, "Homebrew  ·  3DSX", C_ACCENT);
    }
    else
@@ -1820,7 +2907,7 @@ static void draw_top_game(const game_art *a)
       blit_rgba(a->banner, 256, 128, 32, 16, 1);
       ui_rrect_outline(30, 14, 260, 132, 5, 1, C_FAINT);
    }
-   draw_top_game_metadata(a, 56, 180, 112, 188);
+   draw_top_game_metadata(a, 56, 170, 112);
 }
 
 static void draw_top_folder(const char *name, bool up)
@@ -1837,50 +2924,80 @@ static void draw_top_folder(const char *name, bool up)
 static void draw_top_intro(void)
 {
    top_bg();
-   ui_text_center(&ui_font_title, UI_W / 2, 40, "3DSX Forwarder", C_TEXT);
-   ui_text_center(&ui_font_small, UI_W / 2, 68, "Puts .3dsx apps on the HOME Menu", C_DIM);
+   ui_text_center(&ui_font_title, UI_W / 2, 40, "MULTI-FORWARDER", C_TEXT);
+   ui_text_center(&ui_font_small, UI_W / 2, 68, "Forward 3DSX, GBA, SNES and NDS", C_DIM);
    text_lines(&ui_font_small, 40, 100, 16,
-              "Icon: App.png or .jpg beside App.3dsx,\n"
-              "else a cartridge with the app's name.\n"
-              "Banner: App.banner.png or .jpg (256x128),\n"
-              "else the icon, bigger, with the name.\n"
-              "Other shapes: X pads or crops them.\n\n"
-              "The CIA launches the selected .3dsx via\n"
-              "Homebrew Launcher on Luma3DS.", C_TEXT2, UI_W - 60);
+              "3DSX: launches through Homebrew Launcher.\n"
+              "GBA: gpSP 3D. SNES: Snes9x 3D.\n"
+              "NDS: installs a TWL forwarder to NAND.\n"
+              "Custom artwork sits beside the game.\n"
+              "SELECT cycles banner styles for 3DSX,\n"
+              "GBA and SNES forwarders.", C_TEXT2, UI_W - 60);
 }
 
 static void draw_top_icon(const icon_entry *ic)
 {
-   static u8 smdh[FWDCIA_SMDH_SIZE];
-   static u16 big[48 * 48];
-   char tid[40], line[64];
-   const char *p;
-   int y = 160, lines = 0;
+   char first[64], second[64], tid[40];
+   int label_y, tid_y;
    top_bg();
    ui_rrect(108, 30, 104, 104, 14, C_PANEL);
-   if (read_title_smdh(ic->tid, smdh))
-   {
-      smdh_icon_decode(smdh + 0x24C0, 48, big);
-      blit_565(big, 48, 48, 112, 34, 2);
-   }
-   p = ic->name;
-   while (*p)
-   {
-      const char *nl = strchr(p, '\n');
-      int n = nl ? (int)(nl - p) : (int)strlen(p);
-      if (n >= (int)sizeof(line))
-         n = sizeof(line) - 1;
-      memcpy(line, p, n);
-      line[n] = 0;
-      ui_text_center(&ui_font_bold, UI_W / 2, y, line, C_TEXT);
-      y += 20;
-      lines++;
-      p += n + (nl ? 1 : 0);
-      if (!nl)
-         break;
-   }
+   blit_565(ic->icon48, 48, 48, 112, 34, 2);
+   wrap_text_two_lines(&ui_font_bold, ic->name, 280,
+                       first, sizeof(first), second, sizeof(second));
+   ui_text_center(&ui_font_bold, UI_W / 2, 144, first, C_TEXT);
+   if (second[0])
+      ui_text_center(&ui_font_bold, UI_W / 2, 162, second, C_TEXT);
+   label_y = second[0] ? 182 : 166;
+   tid_y = second[0] ? 218 : 202;
+   if (ic->sys == SYS_3DSX)
+      ui_text_center(&ui_font_small, UI_W / 2, label_y,
+                     "3DSX Homebrew Launcher", C_DIM);
+   else if (ic->publisher[0])
+      ui_text_center(&ui_font_small, UI_W / 2, label_y, ic->publisher, C_DIM);
    snprintf(tid, sizeof(tid), "Title ID: %016llX", (unsigned long long)ic->tid);
-   ui_text_center(&ui_font_small, UI_W / 2, y + (lines > 1 ? 20 : 8), tid, C_DIM);
+   ui_text_center(&ui_font_small, UI_W / 2, tid_y, tid, C_DIM);
+}
+
+static void draw_top_twl_icon(const twl_icon_entry *ic)
+{
+   char tid[40], first[64], second[64];
+   int label_y, tid_y;
+   top_bg();
+   ui_rrect(108, 30, 104, 104, 14, C_PANEL);
+   if (ic->has_icon)
+      draw_twl_icon_scaled(ic, 112, 34, 96);
+   wrap_text_two_lines(&ui_font_bold, ic->name, 280,
+                       first, sizeof(first), second, sizeof(second));
+   ui_text_center(&ui_font_bold, UI_W / 2, 144, first, C_TEXT);
+   if (second[0])
+      ui_text_center(&ui_font_bold, UI_W / 2, 160, second, C_TEXT);
+   label_y = second[0] ? 182 : 166;
+   tid_y = second[0] ? 218 : 202;
+   ui_text_center(&ui_font_small, UI_W / 2, label_y,
+                  ic->is_nds_forwarder ? "Twilight Menu" : "DSiWare",
+                  C_DIM);
+   snprintf(tid, sizeof(tid), "Title ID: %016llX", (unsigned long long)ic->tid);
+   ui_text_center(&ui_font_small, UI_W / 2, tid_y, tid, C_DIM);
+}
+
+static void draw_top_nds_preview(const char *path, bool use_custom_icon)
+{
+   twl_icon_entry preview;
+   char first[64], second[64];
+   memset(&preview, 0, sizeof(preview));
+   preview.tid = nds_title_id_for_path(path);
+   preview.is_nds_forwarder = true;
+   if (!read_nds_banner_icon(path, &preview, use_custom_icon))
+      snprintf(preview.name, sizeof(preview.name), "NDS game");
+   top_bg();
+   ui_rrect(108, 30, 104, 104, 14, C_PANEL);
+   if (preview.has_icon)
+      draw_twl_icon_scaled(&preview, 112, 34, 96);
+   wrap_text_two_lines(&ui_font_bold, preview.name, 280,
+                       first, sizeof(first), second, sizeof(second));
+   ui_text_center(&ui_font_bold, UI_W / 2, 144, first, C_TEXT);
+   if (second[0])
+      ui_text_center(&ui_font_bold, UI_W / 2, 162, second, C_TEXT);
 }
 
 /* ---- dialogs on the bottom screen ---- */
@@ -1893,11 +3010,15 @@ static bool touched(u32 k, touchPosition *t)
    return true;
 }
 
-/* a card over the bottom screen; ok / cancel labels (cancel may be NULL).
- * Returns true for A (or tapping ok), false for B (or tapping cancel). */
-static bool dialog(const char *title, const char *body, const char *ok, const char *cancel, u16 ok_color)
+static void draw_footer(const char *keys);
+
+/* A card over the bottom screen; returns true for OK and false for Cancel. */
+static bool dialog_with_default(const char *title, const char *body,
+                                const char *ok, const char *cancel,
+                                u16 ok_color, bool default_cancel)
 {
    int lines = 1, h, y0, bw = cancel ? 128 : 160;
+   int selected = cancel && default_cancel ? 0 : 1;
    const char *p;
    for (p = body; p && *p; p++)
       if (*p == '\n') lines++;
@@ -1910,16 +3031,22 @@ static bool dialog(const char *title, const char *body, const char *ok, const ch
    text_lines(&ui_font_small, 30, y0 + 38, 16, body, C_TEXT2, UI_W - 60);
    if (cancel)
    {
-      ui_rrect(30, y0 + h - 40, bw, 28, 14, C_ROW_SEL);
-      ui_text_center(&ui_font_body, 30 + bw / 2, y0 + h - 36, cancel, C_TEXT2);
-      ui_rrect(UI_W - 30 - bw, y0 + h - 40, bw, 28, 14, ok_color);
-      ui_text_center(&ui_font_bold, UI_W - 30 - bw / 2, y0 + h - 37, ok, C_TEXT);
+      ui_rrect(30, y0 + h - 40, bw, 28, 14, selected == 0 ? ok_color : C_ROW_SEL);
+      ui_text_center(selected == 0 ? &ui_font_bold : &ui_font_body,
+                     30 + bw / 2, y0 + h - 36, cancel,
+                     selected == 0 ? C_TEXT : C_TEXT2);
+      ui_rrect(UI_W - 30 - bw, y0 + h - 40, bw, 28, 14, selected == 1 ? ok_color : C_ROW_SEL);
+      ui_text_center(selected == 1 ? &ui_font_bold : &ui_font_body,
+                     UI_W - 30 - bw / 2, y0 + h - 37, ok,
+                     selected == 1 ? C_TEXT : C_TEXT2);
    }
    else
    {
       ui_rrect((UI_W - bw) / 2, y0 + h - 40, bw, 28, 14, ok_color);
       ui_text_center(&ui_font_bold, UI_W / 2, y0 + h - 37, ok, C_TEXT);
    }
+   if (cancel)
+      draw_footer("A: Proceed   B: Cancel");
    ui_present();
 
    while (aptMainLoop())
@@ -1929,7 +3056,19 @@ static bool dialog(const char *title, const char *body, const char *ok, const ch
       gspWaitForVBlank();
       hidScanInput();
       k = hidKeysDown();
-      if (k & KEY_A) return true;
+      if (cancel && (k & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN)))
+      {
+         selected = !selected;
+         ui_rrect(30, y0 + h - 40, bw, 28, 14, selected == 0 ? ok_color : C_ROW_SEL);
+         ui_text_center(selected == 0 ? &ui_font_bold : &ui_font_body,
+                        30 + bw / 2, y0 + h - 36, cancel, selected == 0 ? C_TEXT : C_TEXT2);
+         ui_rrect(UI_W - 30 - bw, y0 + h - 40, bw, 28, 14, selected == 1 ? ok_color : C_ROW_SEL);
+         ui_text_center(selected == 1 ? &ui_font_bold : &ui_font_body,
+                        UI_W - 30 - bw / 2, y0 + h - 37, ok, selected == 1 ? C_TEXT : C_TEXT2);
+         draw_footer("A: Proceed   B: Cancel");
+         ui_present();
+      }
+      if (k & KEY_A) return cancel ? selected == 1 : true;
       if (k & KEY_B) return cancel ? false : true;
       if (touched(k, &t) && t.py >= y0 + h - 40 && t.py < y0 + h - 12)
       {
@@ -1967,6 +3106,67 @@ done:
    return same;
 }
 
+static bool title_id_path_exists(const char *file, const char *path)
+{
+   char line[320];
+   FILE *f = fopen(file, "r");
+   bool found = false;
+   if (!f)
+      return false;
+   while (fgets(line, sizeof(line), f))
+   {
+      char *tab = strrchr(line, '\t');
+      if (tab)
+      {
+         *tab = 0;
+         if (!strcmp(line, path))
+         {
+            found = true;
+            break;
+         }
+      }
+   }
+   fclose(f);
+   return found;
+}
+
+static bool merge_title_id_file(const char *src, const char *dst)
+{
+   char line[320], path[320];
+   FILE *in = fopen(src, "r"), *out = fopen(dst, "a");
+   bool ok = in != NULL && out != NULL;
+   if (!ok)
+   {
+      if (in) fclose(in);
+      if (out) fclose(out);
+      return false;
+   }
+   while (fgets(line, sizeof(line), in))
+   {
+      char *tab;
+      snprintf(path, sizeof(path), "%s", line);
+      tab = strrchr(path, '\t');
+      if (tab)
+      {
+         *tab = 0;
+         if (title_id_path_exists(dst, path))
+            continue;
+      }
+      if (fputs(line, out) == EOF || fflush(out))
+      {
+         ok = false;
+         break;
+      }
+   }
+   if (ferror(in))
+      ok = false;
+   if (fclose(in))
+      ok = false;
+   if (fclose(out))
+      ok = false;
+   return ok;
+}
+
 static bool make_directory(const char *path)
 {
    struct stat st;
@@ -1975,7 +3175,7 @@ static bool make_directory(const char *path)
    return !stat(path, &st) && S_ISDIR(st.st_mode);
 }
 
-static bool copy_import_file(const char *src, const char *dst)
+static bool copy_import_file_new(const char *src, const char *dst)
 {
    char tmp[900];
    FILE *in = NULL, *out = NULL;
@@ -1983,8 +3183,6 @@ static bool copy_import_file(const char *src, const char *dst)
    size_t n;
    bool ok = false;
 
-   if (!access(dst, F_OK))
-      return same_file_contents(src, dst);
    if (snprintf(tmp, sizeof(tmp), "%s.importing", dst) >= (int)sizeof(tmp))
       return false;
    remove(tmp);
@@ -2016,7 +3214,32 @@ done:
    return ok;
 }
 
-static bool copy_import_tree(const char *src, const char *dst, bool old_root)
+static bool copy_import_file(const char *src, const char *dst)
+{
+   char backup[900];
+   int suffix;
+   if (access(dst, F_OK))
+      return copy_import_file_new(src, dst);
+   if (same_file_contents(src, dst))
+      return true;
+   if (!strcmp(dst, TITLE_IDS))
+      return merge_title_id_file(src, dst);
+   for (suffix = 0; suffix < 100; suffix++)
+   {
+      int n = suffix == 0
+         ? snprintf(backup, sizeof(backup), "%s.legacy", dst)
+         : snprintf(backup, sizeof(backup), "%s.legacy.%d", dst, suffix);
+      if (n < 0 || n >= (int)sizeof(backup))
+         return false;
+      if (access(backup, F_OK))
+         return copy_import_file_new(src, backup);
+      if (same_file_contents(src, backup))
+         return true;
+   }
+   return false;
+}
+
+static bool copy_import_tree(const char *src, const char *dst)
 {
    DIR *dir;
    struct dirent *entry;
@@ -2042,12 +3265,9 @@ static bool copy_import_tree(const char *src, const char *dst, bool old_root)
          break;
       }
       if (S_ISDIR(st.st_mode))
-         ok = copy_import_tree(from, to, false);
+         ok = copy_import_tree(from, to);
       else
       {
-         if (old_root && (!strcasecmp(entry->d_name, "3dsx-iconmaker.3dsx") ||
-                          !strcasecmp(entry->d_name, "3dsx-iconmaker.smdh")))
-            continue;
          ok = copy_import_file(from, to);
       }
       if (!ok)
@@ -2082,6 +3302,44 @@ static bool remove_import_tree(const char *path)
    return ok && !rmdir(path);
 }
 
+static int has_importable_files(const char *path)
+{
+   DIR *dir = opendir(path);
+   struct dirent *entry;
+   bool found = false;
+   if (!dir)
+      return -1;
+   while ((entry = readdir(dir)))
+   {
+      char child[900];
+      struct stat st;
+      if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+         continue;
+      if (snprintf(child, sizeof(child), "%s/%s", path, entry->d_name) >= (int)sizeof(child) ||
+          stat(child, &st))
+      {
+         closedir(dir);
+         return -1;
+      }
+      if (S_ISDIR(st.st_mode))
+      {
+         int nested = has_importable_files(child);
+         if (nested < 0)
+         {
+            closedir(dir);
+            return -1;
+         }
+         found = nested > 0;
+      }
+      else
+         found = true;
+      if (found)
+         break;
+   }
+   closedir(dir);
+   return found ? 1 : 0;
+}
+
 static int import_old_database(void)
 {
    struct stat st;
@@ -2089,9 +3347,9 @@ static int import_old_database(void)
    if (stat(OLD_APP_DIR, &st))
       return errno == ENOENT ? 0 : -1;
    if (!S_ISDIR(st.st_mode) || !make_directory("sdmc:/3ds") ||
-       !copy_import_tree(OLD_APP_DIR, APP_DIR, true))
+       !copy_import_tree(OLD_APP_DIR, APP_DIR))
       return -1;
-   return remove_import_tree(OLD_APP_DIR) ? 1 : -1;
+   return 1;
 }
 
 static void progress_keys(const char *title, const char *line, int done, int n, const char *keys)
@@ -2111,28 +3369,46 @@ static void progress_keys(const char *title, const char *line, int done, int n, 
 
 static void progress(const char *title, const char *line, int done, int n)
 {
-   progress_keys(title, line, done, n, n > 1 ? "Hold B to stop after this one" : "");
+   progress_keys(title, line, done, n, n > 1 ? "B: Stop after this one" : "");
 }
 
 /* ------------------------------------------------------------------ */
 /* actions                                                             */
 /* ------------------------------------------------------------------ */
 
-static void make_one(const entry *e)
+static int make_one(const entry *e)
 {
    const char *name = e->name;
    char path[800], err[200], body[400], missing[160] = "";
    char custom_title[64] = "", custom_publisher[64] = "";
    bool again, use_custom_publisher = false;
    snprintf(path, sizeof(path), "%s%s", cwd, name);
-   again = icon_installed(title_id_for_path(path));
-   if (!sys_installed[e->sys])
-      snprintf(missing, sizeof(missing), "\nHomebrew Launcher Loader isn't\ninstalled as a CIA yet.");
-   snprintf(body, sizeof(body), "%s\nIt launches through Homebrew Launcher.\nThe top screen shows how it will look.%s",
-            again ? "It's on the HOME Menu already:\nthis makes it again." : "Its icon and banner go on the HOME Menu.",
-            missing);
+   again = e->sys == SYS_NDS
+      ? twl_title_installed(nds_title_id_for_path(path))
+      : icon_installed(title_id_for_path(path, e->sys));
+   if (e->sys != SYS_NDS && !sys_installed[e->sys])
+   {
+      if (e->sys == SYS_3DSX)
+         snprintf(missing, sizeof(missing), "\nInstall Homebrew Launcher Loader as a CIA first.");
+      else if (e->sys == SYS_GBA)
+         snprintf(missing, sizeof(missing), "\nInstall the gpSP 3D CIA first.");
+      else if (e->sys == SYS_SNES)
+         snprintf(missing, sizeof(missing), "\nInstall the Snes9x 3D CIA first.");
+   }
+   if (e->sys == SYS_NDS)
+      snprintf(body, sizeof(body), "%s\nThis installs a TWL forwarder to NAND.\nThe NDS Bootstrap forwarder pack is required.",
+               again ? "This NDS title is already installed." : "This creates an NDS forwarder.");
+   else if (e->sys == SYS_3DSX)
+      snprintf(body, sizeof(body), "%s\nIt launches through Homebrew Launcher.\nThe top screen shows how it will look.%s",
+               again ? "It's on the HOME Menu already:\nthis makes it again." : "Its icon and banner go on the HOME Menu.",
+               missing);
+   else
+      snprintf(body, sizeof(body), "%s\nIt launches through %s.\nThe top screen shows how it will look.%s",
+               again ? "It's on the HOME Menu already:\nthis makes it again." : "Its icon and banner go on the HOME Menu.",
+               systems[e->sys].name,
+               missing);
    if (!dialog(again ? "Make the icon again?" : "Make an icon?", body, "Make Forwarder", "Cancel", C_ACCENT))
-      return;
+      return 0;
    if (dialog("Custom Title/Name?", "", "Yes", "No", C_ACCENT))
    {
       SwkbdState keyboard;
@@ -2140,73 +3416,33 @@ static void make_one(const entry *e)
       swkbdSetFeatures(&keyboard, SWKBD_MULTILINE);
       swkbdSetHintText(&keyboard, "Enter custom title");
       if (swkbdInputText(&keyboard, custom_title, sizeof(custom_title)) != SWKBD_BUTTON_CONFIRM)
-         return;
+         return 0;
       if (!custom_title[0])
       {
          dialog("Title required", "Enter a title, or choose No to use the standard title.",
                 "OK", NULL, C_ROW_SEL);
-         return;
+         return 0;
       }
    }
-   if (dialog("Custom Publisher?", "", "Yes", "No", C_ACCENT))
+   if (e->sys != SYS_NDS && dialog("Custom Publisher?", "", "Yes", "No", C_ACCENT))
    {
       SwkbdState keyboard;
       swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, sizeof(custom_publisher) - 1);
       swkbdSetHintText(&keyboard, "Enter custom publisher");
       if (swkbdInputText(&keyboard, custom_publisher, sizeof(custom_publisher)) != SWKBD_BUTTON_CONFIRM)
-         return;
+         return 0;
       use_custom_publisher = true;
    }
    progress("Making the icon...", name, 0, 1);
    if (make_icon(path, e, custom_title[0] ? custom_title : NULL,
                  use_custom_publisher ? custom_publisher : NULL, err, sizeof(err)))
+   {
       dialog("Could not make it", err, "OK", NULL, C_ROW_SEL);
+      return -1;
+   }
    else
       dialog("Done", "It's on the HOME Menu now.", "OK", NULL, UI_RGB(0x2E, 0x8B, 0x57));
-}
-
-static void make_folder(void)
-{
-   char path[800], err[200], body[200], line[300], first_err[200] = "";
-   int i, done = 0, failed = 0;
-   if (!ngames)
-   {
-      dialog("No apps here", "This folder has no .3dsx apps.", "OK", NULL, C_ROW_SEL);
-      return;
-   }
-   snprintf(body, sizeof(body), "All %d app%s in this folder.\nApps that are on the HOME Menu\nalready get made again.",
-            ngames, ngames == 1 ? "" : "s");
-   if (!dialog("Make icons for every app?", body, "Make all", "Cancel", C_ACCENT))
-      return;
-   for (i = 0; i < nentries && aptMainLoop(); i++)
-   {
-      if (entries[i].dir)
-         continue;
-      snprintf(line, sizeof(line), "%d of %d:  %s", done + failed + 1, ngames, entries[i].name);
-      progress("Making icons...", line, done + failed, ngames);
-      snprintf(path, sizeof(path), "%s%s", cwd, entries[i].name);
-      if (make_icon(path, &entries[i], NULL, NULL, err, sizeof(err)))
-      {
-         if (!failed)
-            snprintf(first_err, sizeof(first_err), "%s", err);
-         failed++;
-      }
-      else
-         done++;
-      hidScanInput();
-      if (hidKeysHeld() & KEY_B)
-         break;
-   }
-   if (failed)
-   {
-      snprintf(body, sizeof(body), "%d made, %d failed. The first error:\n%.150s", done, failed, first_err);
-      dialog("Some icons failed", body, "OK", NULL, C_ROW_SEL);
-   }
-   else
-   {
-      snprintf(body, sizeof(body), "%d icon%s on the HOME Menu now.", done, done == 1 ? "" : "s");
-      dialog("Done", body, "OK", NULL, UI_RGB(0x2E, 0x8B, 0x57));
-   }
+   return 1;
 }
 
 /* ---- box art (L) ---- */
@@ -2304,7 +3540,7 @@ static void ba_show(int step, size_t done, size_t total)
       else
          snprintf(line, sizeof(line), "%s...", w);
    }
-   progress_keys(title, line, ba_i * 100 + pct, ba_n * 100, "Hold B to stop");
+   progress_keys(title, line, ba_i * 100 + pct, ba_n * 100, "B: Stop");
 }
 
 /* box art for the game e (in cwd): saved to boxart_dir or next to it;
@@ -2484,21 +3720,67 @@ static void boxart_folder(void)
           r == BOXART_ERROR ? C_ROW_SEL : UI_RGB(0x2E, 0x8B, 0x57));
 }
 
-static void delete_icon(const icon_entry *ic)
+static bool delete_icon(const icon_entry *ic)
 {
    char body[200];
    Result r;
+   u64 tid = ic->tid;
    snprintf(body, sizeof(body), "%.60s\nThe .3dsx stays on the SD card.", ic->name);
    if (!dialog("Uninstall this forwarder?", body, "Uninstall", "Cancel", UI_RGB(0xC8, 0x45, 0x45)))
-      return;
-   r = AM_DeleteTitle(MEDIATYPE_SD, ic->tid);
+      return false;
+   progress_keys("Uninstalling this Forwarder,", "Please Wait...", 0, 0, "");
+   gspWaitForVBlank();
+   r = AM_DeleteTitle(MEDIATYPE_SD, tid);
    if (R_SUCCEEDED(r))
-      AM_DeleteTicket(ic->tid);
+      AM_DeleteTicket(tid);
    if (R_FAILED(r))
    {
       snprintf(body, sizeof(body), "The system said %08lX.", (unsigned long)r);
       dialog("Could not delete it", body, "OK", NULL, C_ROW_SEL);
+      return false;
    }
+   remove_installed_icon(tid);
+   set_game_installed_badge(tid, false);
+   return true;
+}
+
+static bool delete_twl_forwarder(const twl_icon_entry *ic)
+{
+   char body[200];
+   Result r;
+   u64 tid = ic->tid;
+   int i, j;
+   if (!ic->is_nds_forwarder)
+      return false;
+   snprintf(body, sizeof(body),
+            "%.60s\nOnly this NDS forwarder is removed.\nThe .nds stays on the SD card.",
+            ic->name);
+   if (!dialog("Uninstall this NDS forwarder?", body, "Uninstall", "Cancel",
+               UI_RGB(0xC8, 0x45, 0x45)))
+      return false;
+   progress_keys("Uninstalling this Forwarder,", "Please Wait...", 0, 0, "");
+   gspWaitForVBlank();
+   r = AM_DeleteTitle(MEDIATYPE_NAND, tid);
+   if (R_SUCCEEDED(r))
+      AM_DeleteTicket(tid);
+   if (R_FAILED(r))
+   {
+      snprintf(body, sizeof(body), "The system said %08lX.", (unsigned long)r);
+      dialog("Could not uninstall it", body, "OK", NULL, C_ROW_SEL);
+      return false;
+   }
+   for (i = 0; i < ntwl_icons; i++)
+      if (twl_icons[i].tid == tid && twl_icons[i].media == MEDIATYPE_NAND)
+      {
+         for (j = i + 1; j < ntwl_icons; j++)
+            twl_icons[j - 1] = twl_icons[j];
+         ntwl_icons--;
+         break;
+      }
+   if (twl_installed_count != 0xFFFFFFFF && twl_installed_count)
+      twl_installed_count--;
+   set_game_installed_badge(tid, false);
+   return true;
 }
 
 static void save_dir(void)
@@ -2521,7 +3803,6 @@ static void save_settings(void)
    if ((f = fopen(SETTINGS, "w")))
    {
       fprintf(f, "banner=%s\n", style_key[banner_style]);
-      fprintf(f, "fit=%s\n", fit_key[fit_mode]);
       fclose(f);
    }
 }
@@ -2540,14 +3821,6 @@ static void load_settings(void)
          for (i = 0; i < STYLE_COUNT; i++)
             if (!strcmp(buf + 7, style_key[i]))
                banner_style = i;
-      }
-      else if (!strncmp(buf, "fit=", 4))
-      {
-         int i;
-         buf[strcspn(buf, "\r\n")] = 0;
-         for (i = 0; i < FIT_COUNT; i++)
-            if (!strcmp(buf + 4, fit_key[i]))
-               fit_mode = i;
       }
    fclose(f);
 }
@@ -2780,8 +4053,15 @@ static bool draw_top_for(int tab, int sel, bool am)
    }
    else if (tab == TAB_ICONS)
    {
-      if (nicons)
-         draw_top_icon(&icons[sel]);
+      if (ninstalled_icons)
+         draw_top_icon(&icons[installed_icon_indices[sel]]);
+      else
+         top_bg();
+   }
+   else if (tab == TAB_TWL)
+   {
+      if (ntwl_icons)
+         draw_top_twl_icon(&twl_icons[sel]);
       else
          top_bg();
    }
@@ -2789,6 +4069,12 @@ static bool draw_top_for(int tab, int sel, bool am)
       draw_top_intro();
    else if (entries[sel].dir)
       draw_top_folder(entries[sel].name, !strcmp(entries[sel].name, ".."));
+   else if (entries[sel].sys == SYS_NDS)
+   {
+      char path[800];
+      snprintf(path, sizeof(path), "%s%s", cwd, entries[sel].name);
+      draw_top_nds_preview(path, nds_custom_icon);
+   }
    else
    {
       char path[800];
@@ -2830,48 +4116,64 @@ static bool draw_top_for(int tab, int sel, bool am)
 
 int main(void)
 {
-   int tab = TAB_GAMES, sel = 0, top = 0, gsel = 0, gtop = 0;
+   int tab = TAB_GAMES, sel = 0, top = 0;
+   int saved_sel[3] = { 0, 0, 0 }, saved_top[3] = { 0, 0, 0 };
    int top_wait = 0;           /* frames until the top screen is redrawn */
-   int import_result;
+   int import_result, old_path_result, old_has_files;
    struct stat old_data;
-   bool am, redraw = true, romfs;
+   bool am, fs, ps, redraw = true, romfs;
 
    osSetSpeedupEnable(true);           /* New 3DS: the faster CPU and its L2 cache */
    gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
    romfs = R_SUCCEEDED(romfsInit());
-   if (!stat(OLD_APP_DIR, &old_data))
+   old_path_result = stat(OLD_APP_DIR, &old_data);
+   if (!old_path_result)
    {
-      dialog("Importing Old v0.2.2 Database",
-             "Move saved settings and title records to the new app folder.", "Import", NULL, C_ACCENT);
-      import_result = import_old_database();
-      if (import_result < 0)
-      {
-         dialog("Import failed", "The remaining old-folder data is preserved. Check SD space or file conflicts, then try again.",
+      old_has_files = S_ISDIR(old_data.st_mode) ? has_importable_files(OLD_APP_DIR) : 0;
+      if (old_has_files < 0)
+         dialog("Could not check old data", "The old folder could not be read. No files were changed.",
                 "OK", NULL, C_BAD);
-         if (romfs) romfsExit();
-         gfxExit();
-         return 1;
+      else if (old_has_files > 0 &&
+          dialog_with_default("Import old database?",
+                 "Saved files were found in\n/3ds/3DSX-Forwarder. Import them\ninto /3ds/MULTI-Forwarder/?",
+                 "YES", "NO", C_ACCENT, false))
+      {
+         import_result = import_old_database();
+         if (import_result < 0)
+         {
+            dialog("Import failed", "The old folder has been preserved. Check SD space and card access, then try again.",
+                   "OK", NULL, C_BAD);
+         }
+         else if (import_result > 0 &&
+                  dialog("Import complete", "The folder was imported.\n\nDelete the old 3DSX-Forwarder\nHomebrew folder?",
+                         "YES", "NO", C_BAD) &&
+                  !remove_import_tree(OLD_APP_DIR))
+         {
+            dialog("Could not delete the old folder",
+                   "The imported database is safe, but some old files remain.",
+                   "OK", NULL, C_BAD);
+         }
       }
-      if (import_result > 0)
-         dialog("Import complete", "Saved data is ready. Starting with the imported database now.",
-                "Continue", NULL, UI_RGB(0x2E, 0x8B, 0x57));
    }
    else if (errno != ENOENT)
    {
-      dialog("Could not check old data", "The old database folder could not be checked. The app will not change any data.",
+      dialog("Could not check old data", "The old database folder could not be checked. No files were changed.",
              "OK", NULL, C_BAD);
-      if (romfs) romfsExit();
-      gfxExit();
-      return 1;
    }
    mkdir("sdmc:/3ds", 0777);
    mkdir(APP_DIR, 0777);
    am = R_SUCCEEDED(amInit());
+   fs = R_SUCCEEDED(fsInit());
+   ps = R_SUCCEEDED(psInit());
+   nds_services_ready = am && fs && ps;
    hidSetRepeatParameters(20, 4);
 
    load_title_records();
    if (am)
+   {
       read_icons();
+      read_twl_titles();
+   }
    load_settings();
 #ifdef ICONMAKER_TIMING
    tm_log_start();
@@ -2891,7 +4193,8 @@ int main(void)
       hidScanInput();
       k = hidKeysDown() | (hidKeysDownRepeat() & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) | preview_keys;
       preview_keys = 0;
-      count = tab == TAB_GAMES ? nentries : nicons;
+      count = tab == TAB_GAMES ? nentries :
+              tab == TAB_ICONS ? ninstalled_icons : ntwl_icons;
       if (k & KEY_START)
          break;
       if (k & KEY_DDOWN && sel < count - 1) sel++;
@@ -2903,7 +4206,25 @@ int main(void)
       if (touched(k, &t))
       {
          if (t.py >= TAB_Y && t.py < TAB_Y + TAB_H)
-            k |= t.px < UI_W / 2 ? (tab == TAB_ICONS ? KEY_B : 0) : (tab == TAB_GAMES ? KEY_R : 0);
+         {
+            int xs[3], ws[3], target;
+            tab_layout(xs, ws);
+            for (target = 0; target < 3; target++)
+               if (t.px >= xs[target] && t.px < xs[target] + ws[target])
+                  break;
+            if (target != tab)
+            {
+               if (target < 3)
+               {
+                  saved_sel[tab] = sel;
+                  saved_top[tab] = top;
+                  tab = target;
+                  sel = saved_sel[tab];
+                  top = saved_top[tab];
+                  redraw = true;
+               }
+            }
+         }
          else if (t.py >= LIST_Y && t.py < LIST_Y + ROWS * ROW_H)
          {
             int idx = top + (t.py - LIST_Y) / ROW_H;
@@ -2916,22 +4237,40 @@ int main(void)
          }
       }
 
-      if (tab == TAB_GAMES)
+      if (k & KEY_R)
       {
-         if (k & KEY_R && am)
-         {
-            gsel = sel;
-            gtop = top;
-            tab = TAB_ICONS;
-            sel = top = 0;
-         }
-         else if (k & KEY_B && strcmp(cwd, "sdmc:/"))
+         saved_sel[tab] = sel;
+         saved_top[tab] = top;
+         tab = (tab + 1) % 3;
+         sel = saved_sel[tab];
+         top = saved_top[tab];
+         redraw = true;
+      }
+      else if (k & KEY_L)
+      {
+         saved_sel[tab] = sel;
+         saved_top[tab] = top;
+         tab = (tab + 2) % 3;
+         sel = saved_sel[tab];
+         top = saved_top[tab];
+         redraw = true;
+      }
+      else if (tab == TAB_GAMES)
+      {
+         if (k & KEY_B && strcmp(cwd, "sdmc:/"))
          {
             leave_folder(&sel);
          }
          else if (k & KEY_SELECT)
          {
-            if (nentries && !entries[sel].dir && entries[sel].pic[1] >= 0)
+            if (nentries && !entries[sel].dir && entries[sel].sys == SYS_NDS)
+            {
+               char path[800], icon_path[800];
+               snprintf(path, sizeof(path), "%s%s", cwd, entries[sel].name);
+               nds_custom_icon = nds_custom_icon_path(path, icon_path, sizeof(icon_path))
+                  ? !nds_custom_icon : false;
+            }
+            else if (nentries && !entries[sel].dir && entries[sel].pic[1] >= 0)
             {
                banner_cycle = (banner_cycle + 1) % 4;
                if (banner_cycle == 1) banner_style = STYLE_BLUE;
@@ -2940,25 +4279,13 @@ int main(void)
             }
             else
                banner_style = (banner_style + 1) % STYLE_COUNT;
-            cache_clear();
-            save_settings();
+            if (!nentries || entries[sel].dir || entries[sel].sys != SYS_NDS)
+            if (!nentries || entries[sel].dir || entries[sel].sys != SYS_NDS)
+            {
+               cache_clear();
+               save_settings();
+            }
             top_wait = 1;
-            redraw = true;
-         }
-         else if (k & KEY_X)
-         {
-            /* pad or crop pictures of another shape, for icons made from now on */
-            fit_mode = (fit_mode + 1) % FIT_COUNT;
-            cache_clear();
-            save_settings();
-            top_wait = 1;
-            redraw = true;
-         }
-         else if (k & KEY_Y && am)
-         {
-            make_folder();
-            read_icons();
-            read_dir();
             redraw = true;
          }
          else if ((k & KEY_A || act) && nentries)
@@ -2975,37 +4302,79 @@ int main(void)
             }
             else if (am)
             {
-               make_one(&entries[sel]);
-               read_icons();
-               read_dir();
-               top_wait = 1;
+               int result = make_one(&entries[sel]);
+               if (result > 0)
+               {
+                  char path[800];
+                  snprintf(path, sizeof(path), "%s%s", cwd, entries[sel].name);
+                  entries[sel].has_icon = true;
+                  if (entries[sel].sys != SYS_NDS &&
+                      !refresh_installed_icon(path, entries[sel].sys))
+                     installed_icons_dirty = true;
+                  top_wait = 1;
+               }
+               else if (result < 0)
+               {
+                  if (entries[sel].sys == SYS_NDS)
+                     twl_titles_dirty = true;
+                  else
+                     installed_icons_dirty = true;
+               }
             }
             redraw = true;
          }
       }
-      else
+      else if (tab == TAB_ICONS)
       {
-         if (k & (KEY_L | KEY_B))
+         if (k & KEY_Y)
          {
-            tab = TAB_GAMES;
-            read_dir();
-            sel = gsel < nentries ? gsel : 0;
-            top = gtop;
-         }
-         else if ((k & KEY_X || act) && nicons)
-         {
-            delete_icon(&icons[sel]);
-            read_icons();
+            installed_filter = (installed_filter + 1) % FILTER_COUNT;
+            rebuild_installed_filter();
+            sel = top = 0;
             redraw = true;
-            top_wait = 1;
+         }
+         else if ((k & KEY_X || act) && ninstalled_icons)
+         {
+            if (delete_icon(&icons[installed_icon_indices[sel]]))
+               top_wait = 1;
+            redraw = true;
          }
       }
+      else if (tab == TAB_TWL && (k & KEY_X) && sel >= 0 &&
+               sel < ntwl_icons &&
+               twl_icons[sel].is_nds_forwarder)
+      {
+         if (delete_twl_forwarder(&twl_icons[sel]))
+            top_wait = 1;
+         redraw = true;
+      }
 
+      if (tab == TAB_ICONS && installed_icons_dirty)
+         read_icons();
+      if (tab == TAB_TWL && twl_titles_dirty)
+         read_twl_titles();
+
+      saved_sel[tab] = sel;
+      saved_top[tab] = top;
       if (sel != old_sel || tab != old_tab)
          banner_cycle = 0;
-      count = tab == TAB_GAMES ? nentries : nicons;
+      count = tab == TAB_GAMES ? nentries :
+              tab == TAB_ICONS ? ninstalled_icons : ntwl_icons;
       if (sel >= count) sel = count - 1;
       if (sel < 0) sel = 0;
+      if (sel != old_sel || tab != old_tab || nds_icon_default_pending)
+      {
+         nds_icon_default_pending = false;
+         nds_custom_icon = false;
+         if (tab == TAB_GAMES && nentries && !entries[sel].dir &&
+             entries[sel].sys == SYS_NDS)
+         {
+            char path[800], icon_path[800];
+            snprintf(path, sizeof(path), "%s%s", cwd, entries[sel].name);
+            nds_custom_icon = nds_custom_icon_path(path, icon_path,
+                                                    sizeof(icon_path));
+         }
+      }
       if (sel < top) top = sel;
       if (sel >= top + ROWS) top = sel - ROWS + 1;
       if (top > count - ROWS) top = count - ROWS > 0 ? count - ROWS : 0;
@@ -3047,6 +4416,10 @@ int main(void)
    save_dir();
    if (am)
       amExit();
+   if (fs)
+      fsExit();
+   if (ps)
+      psExit();
    if (romfs)
       romfsExit();
    gfxExit();

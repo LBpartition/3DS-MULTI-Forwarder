@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdint.h>
 
 #include "cia_patch.h"
 #include "sha256.h"
@@ -218,19 +219,83 @@ void cia_reseal(cia_t* cia)
 	sha256(cia->data + first_info, TMD_INFO_RECORDS_SIZE, cia->data + cia->tmd_body + TMD_INFO_RECORDS_HASH);
 }
 
-// Rewrites the SMDH titles in place. Simpler than rebuilding a whole SMDH:
-// the template icon is kept as is.
+static uint32_t next_utf8_codepoint(const unsigned char **text)
+{
+   const unsigned char *p = *text;
+   unsigned char first = *p++;
+   uint32_t codepoint, minimum;
+   int continuation_count, i;
+   if (first < 0x80)
+   {
+      *text = p;
+      return first;
+   }
+   if ((first & 0xE0) == 0xC0)
+   {
+      codepoint = first & 0x1F;
+      minimum = 0x80;
+      continuation_count = 1;
+   }
+   else if ((first & 0xF0) == 0xE0)
+   {
+      codepoint = first & 0x0F;
+      minimum = 0x800;
+      continuation_count = 2;
+   }
+   else if ((first & 0xF8) == 0xF0)
+   {
+      codepoint = first & 0x07;
+      minimum = 0x10000;
+      continuation_count = 3;
+   }
+   else
+   {
+      *text = p;
+      return '?';
+   }
+   for (i = 0; i < continuation_count; i++)
+   {
+      if (!p[i] || (p[i] & 0xC0) != 0x80)
+      {
+         *text = p;
+         return '?';
+      }
+      codepoint = (codepoint << 6) | (p[i] & 0x3F);
+   }
+   *text = p + continuation_count;
+   if (codepoint < minimum || codepoint > 0x10FFFF ||
+       (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+      return '?';
+   return codepoint;
+}
+
+// Rewrites the SMDH titles in place. The template icon is kept as is.
 static void put_utf16(uint8_t* dst, size_t chars, const char* text)
 {
-	size_t i;
+	size_t i = 0;
+	const unsigned char *p = (const unsigned char*)(text ? text : "");
 	memset(dst, 0, chars * 2);
-	for (i = 0; text[i] && i + 1 < chars; i++)
+	while (*p && i + 1 < chars)
 	{
-		// File names are taken as they come: ASCII is enough here, and any
-		// non-ASCII byte is replaced rather than yielding invalid UTF-16.
-		unsigned char c = (unsigned char)text[i];
-		dst[i * 2] = (c < 0x80) ? c : '?';
-		dst[i * 2 + 1] = 0;
+		uint32_t codepoint = next_utf8_codepoint(&p);
+		if (codepoint <= 0xFFFF)
+		{
+			dst[i * 2] = (uint8_t)codepoint;
+			dst[i * 2 + 1] = (uint8_t)(codepoint >> 8);
+			i++;
+		}
+		else
+		{
+			if (i + 2 >= chars)
+				break;
+			codepoint -= 0x10000;
+			dst[i * 2] = (uint8_t)(0xD800 | (codepoint >> 10));
+			dst[i * 2 + 1] = (uint8_t)((0xD800 | (codepoint >> 10)) >> 8);
+			codepoint = 0xDC00 | (codepoint & 0x3FF);
+			dst[(i + 1) * 2] = (uint8_t)codepoint;
+			dst[(i + 1) * 2 + 1] = (uint8_t)(codepoint >> 8);
+			i += 2;
+		}
 	}
 }
 
