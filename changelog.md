@@ -1,10 +1,3 @@
-### v0.4.0 — MULTI-FORWARDER
-- Add GBA and SNES forwarders with custom icons, banners, and banner audio.
-- Add NDS/TWL title listing and NDS forwarder creation.
-- Move app-owned runtime data to `sdmc:/3ds/MULTI-Forwarder`.
-- Add an opt-in import of the old `sdmc:/3ds/3DSX-Forwarder` folder.
-- Add installed-type filters and update the app branding.
-
 ### v0.2.0
 - Initial Release
 
@@ -33,3 +26,19 @@
 ### v0.3.5
 - UI Improvements
 - Add support for custom Banner Audio, see [ReadMe - Custom Icons, Banners & Banner Audio](https://github.com/LBpartition/3DSX-Forwarder/tree/main#custom-icons-banners--banner-audio) for more info
+
+### v0.4.0
+- UI Improvements & BugFixes
+- Add support for more Forwarders:
+     - 3DSX - `.3dsx`
+         - [HomeBrew Launcher](https://github.com/PabloMK7/homebrew_launcher_dummy/releases) Required
+     - NDS - `.nds`
+         - [Twilight Menu](https://github.com/DS-Homebrew/TWiLightMenu) Required
+     - GBA - `.gba`
+         - [gpSP3D](https://github.com/bheppe/gpsp-3d/releases/latest) Required
+     - SNES - `.smc`, `.sfc`, `.fig`, `.bs`, `.bsx`.
+         - [Snes9x-3D](https://github.com/bheppe/snes9x_3ds/releases/latest) Required
+- 3DSX, GBA & SNES - Support for Custom Icon, Banners & Banner Audio
+         - With `.png`/`.jpg` & `.wav` files, see the ReadMe for more info
+- NDS - Support for Custom Icons (also used for NDS Banners)
+         - With `.bmp` files, see the ReadMe for more info
