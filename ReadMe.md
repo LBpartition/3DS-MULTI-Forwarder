@@ -67,7 +67,7 @@
     - `fallout2.banner.wav` - Banner Audio (3 seconds max)
 
 - **Note:** Banners are silent if no `*.banner.wav` file is found.
-- **Note:** Icons and Banners can be `*.png` OR `*.jpg`. (or `*.banner.png` OR `*.banner.jpg`)
+- **Note:** Icons and Banners can be `*.png` OR `*.jpg`. (& `*.banner.png` OR `*.banner.jpg`)
 
 ##### NDS Custom Icons
 
