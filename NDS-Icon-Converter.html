@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <title>NDS Custom Icon Converter</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #101820;
+      color: #edf4f6;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --panel: #192630;
+      --line: #30434e;
+      --muted: #a7b8c1;
+      --mint: #65e0bb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      background:
+        radial-gradient(ellipse at 12% 0%, #1c3b3e 0, transparent 38rem),
+        #101820;
+    }
+
+    main {
+      width: min(940px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 48px 0 64px;
+    }
+
+    .eyebrow {
+      color: var(--mint);
+      font-size: .75rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 10px 0 12px;
+      font-size: clamp(2rem, 6vw, 3.4rem);
+      letter-spacing: -.045em;
+      line-height: 1.05;
+    }
+
+    .intro, .hint { color: var(--muted); line-height: 1.6; }
+    .intro { max-width: 650px; margin: 0 0 28px; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(245px, .75fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      box-shadow: 0 18px 50px #0003;
+    }
+
+    .upload-panel { padding: 22px; }
+
+    .drop-zone {
+      display: grid;
+      min-height: 235px;
+      place-items: center;
+      padding: 24px;
+      border: 1px dashed #55717b;
+      border-radius: 13px;
+      background: #111d25;
+      text-align: center;
+      transition: border-color .15s, background .15s;
+    }
+
+    .drop-zone.dragging {
+      border-color: var(--mint);
+      background: #16332f;
+    }
+
+    .upload-icon {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      margin: 0 auto 12px;
+      border-radius: 15px;
+      background: #203b42;
+      color: var(--mint);
+      font-size: 1.5rem;
+    }
+
+    .drop-zone strong { display: block; font-size: 1.05rem; }
+    .drop-zone p { margin: 8px 0 16px; color: var(--muted); font-size: .92rem; }
+
+    button, .file-button {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      border: 1px solid #70e7c4;
+      border-radius: 10px;
+      background: var(--mint);
+      color: #09241e;
+      font: inherit;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      border-color: #3a5159;
+      background: #293a42;
+      color: #8da1aa;
+      cursor: not-allowed;
+    }
+
+    button:focus-visible, .file-button:focus-visible, input:focus-visible + label {
+      outline: 3px solid #e6ff73;
+      outline-offset: 3px;
+    }
+
+    #file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+
+    .filename {
+      min-height: 1.4em;
+      margin: 14px 0 0;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-size: .86rem;
+    }
+
+    .options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .option {
+      flex: 1 1 180px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #14212a;
+      cursor: pointer;
+    }
+
+    .option:has(input:checked) { border-color: #4fcba7; }
+    .option input { accent-color: var(--mint); }
+    .option strong { display: block; margin: 7px 0 3px; font-size: .9rem; }
+    .option span { display: block; color: var(--muted); font-size: .8rem; line-height: 1.4; }
+
+    .preview-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 22px;
+      text-align: center;
+    }
+
+    .preview-panel h2 { align-self: flex-start; margin: 0 0 18px; font-size: 1rem; }
+
+    .checker {
+      display: grid;
+      width: 224px;
+      height: 224px;
+      place-items: center;
+      border: 1px solid #40535c;
+      border-radius: 12px;
+      background-color: #26343b;
+      background-image: linear-gradient(45deg, #35454d 25%, transparent 25%),
+        linear-gradient(-45deg, #35454d 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #35454d 75%),
+        linear-gradient(-45deg, transparent 75%, #35454d 75%);
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-size: 16px 16px;
+    }
+
+    #preview {
+      width: 192px;
+      height: 192px;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .empty-preview { color: #91a5ad; font-size: .85rem; }
+    .details { width: 100%; margin-top: 16px; color: var(--muted); font-size: .83rem; }
+    .details strong { color: #edf4f6; }
+
+    .palette {
+      display: flex;
+      min-height: 18px;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 4px;
+      margin-top: 9px;
+    }
+
+    .swatch {
+      width: 15px;
+      height: 15px;
+      border: 1px solid #ffffff50;
+      border-radius: 4px;
+    }
+
+    .download { width: 100%; margin-top: auto; padding-top: 20px; }
+    .download button { width: 100%; }
+    .status { min-height: 1.5em; margin: 12px 0 0; color: var(--muted); font-size: .85rem; }
+    .status.error { color: #ff9a94; }
+    .footnote { margin: 19px 2px 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+
+    @media (max-width: 700px) {
+      main { padding-top: 32px; }
+      .workspace { grid-template-columns: 1fr; }
+      .preview-panel { min-height: 390px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">MULTI-Forwarder Tool</div>
+    <h1>NDS Custom Icon Converter</h1>
+    <p class="intro">Turn your artwork into a Nintendo DS forwarder icon.<br><br>Choose a PNG, JPG, or BMP; the conversion happens locally in your browser.</p>
+
+    <section class="workspace" aria-label="Icon conversion">
+      <div class="panel upload-panel">
+        <div class="drop-zone" id="drop-zone">
+          <div>
+            <div class="upload-icon" aria-hidden="true">↑</div>
+            <strong>Drop an image here</strong>
+            <p>PNG, JPG, or BMP · converted to 32 × 32</p>
+            <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.bmp,image/png,image/jpeg,image/bmp">
+            <label class="file-button" for="file-input">Choose image</label>
+          </div>
+        </div>
+        <p class="filename" id="filename" aria-live="polite">No image selected</p>
+
+        <fieldset style="border:0;padding:0;margin:20px 0 0">
+          <legend style="font-size:.9rem;font-weight:750;margin-bottom:10px">Fit artwork to the icon</legend>
+          <div class="options">
+            <label class="option">
+              <input type="radio" name="fit" value="contain" checked>
+              <strong>Fit entire image</strong>
+              <span>Preserves the full image; unused space stays transparent.</span>
+            </label>
+            <label class="option">
+              <input type="radio" name="fit" value="cover">
+              <strong>Fill and crop</strong>
+              <span>Fills the square and crops excess from the center.</span>
+            </label>
+          </div>
+        </fieldset>
+        <p class="footnote">Transparent pixels are preserved as the icon’s transparent palette entry. Partially transparent pixels are thresholded for the 4-bit NDS format.</p>
+      </div>
+
+      <aside class="panel preview-panel" aria-label="Converted icon preview">
+        <h2>32 × 32 preview</h2>
+        <div class="checker">
+          <canvas id="preview" width="32" height="32" aria-label="Converted icon preview"></canvas>
+          <span class="empty-preview" id="empty-preview">Your icon appears here</span>
+        </div>
+        <div class="details" id="details" aria-live="polite">Output: <strong>32 × 32 · 4-bit BMP</strong></div>
+        <div class="palette" id="palette" aria-label="Generated color palette"></div>
+        <div class="download">
+          <button id="download" type="button" disabled>Download BMP</button>
+          <p class="status" id="status" role="status">Choose an image to begin.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const fileInput = document.getElementById("file-input");
+    const dropZone = document.getElementById("drop-zone");
+    const preview = document.getElementById("preview");
+    const previewContext = preview.getContext("2d", { willReadFrequently: true });
+    const emptyPreview = document.getElementById("empty-preview");
+    const fileNameLabel = document.getElementById("filename");
+    const details = document.getElementById("details");
+    const paletteView = document.getElementById("palette");
+    const downloadButton = document.getElementById("download");
+    const status = document.getElementById("status");
+    let outputBytes = null;
+    let outputName = "custom-icon.bmp";
+    let currentBitmap = null;
+
+    function setStatus(message, isError = false) {
+      status.textContent = message;
+      status.classList.toggle("error", isError);
+    }
+
+    function medianCut(colors, limit) {
+      if (colors.length === 0) return [];
+      let boxes = [colors];
+      while (boxes.length < limit) {
+        let selected = -1;
+        let selectedRange = -1;
+        let selectedChannel = 0;
+        for (let i = 0; i < boxes.length; i++) {
+          if (boxes[i].length < 2) continue;
+          for (let channel = 0; channel < 3; channel++) {
+            let min = 255;
+            let max = 0;
+            for (const color of boxes[i]) {
+              min = Math.min(min, color[channel]);
+              max = Math.max(max, color[channel]);
+            }
+            if (max - min > selectedRange) {
+              selected = i;
+              selectedRange = max - min;
+              selectedChannel = channel;
+            }
+          }
+        }
+        if (selected < 0 || selectedRange <= 0) break;
+        const box = boxes.splice(selected, 1)[0].slice().sort((a, b) => a[selectedChannel] - b[selectedChannel]);
+        const middle = Math.floor(box.length / 2);
+        boxes.push(box.slice(0, middle), box.slice(middle));
+      }
+      return boxes.map(box => {
+        const total = box.reduce((sum, color) => [sum[0] + color[0], sum[1] + color[1], sum[2] + color[2]], [0, 0, 0]);
+        return total.map(channel => Math.round(channel / box.length));
+      });
+    }
+
+    function makeBmp(imageData) {
+      const { data } = imageData;
+      const indices = new Uint8Array(32 * 32);
+      const opaqueColors = [];
+      const opaquePixels = [];
+      for (let i = 0; i < 32 * 32; i++) {
+        const offset = i * 4;
+        if (data[offset + 3] < 128) {
+          opaquePixels.push(null);
+        } else {
+          const color = [data[offset], data[offset + 1], data[offset + 2]];
+          opaqueColors.push(color);
+          opaquePixels.push(color);
+        }
+      }
+
+      const colors = medianCut(opaqueColors, 15);
+      const palette = [[0, 0, 0], ...colors];
+      for (let i = 0; i < opaquePixels.length; i++) {
+        const color = opaquePixels[i];
+        if (!color) {
+          indices[i] = 0;
+          continue;
+        }
+        let bestIndex = 1;
+        let bestDistance = Infinity;
+        for (let p = 1; p < palette.length; p++) {
+          const candidate = palette[p];
+          const dr = color[0] - candidate[0];
+          const dg = color[1] - candidate[1];
+          const db = color[2] - candidate[2];
+          const distance = dr * dr + dg * dg + db * db;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = p;
+          }
+        }
+        indices[i] = bestIndex;
+      }
+
+      const paletteBytes = new Uint8Array(16 * 4);
+      for (let i = 0; i < colors.length; i++) {
+        const [r, g, b] = colors[i];
+        const offset = (i + 1) * 4;
+        paletteBytes[offset] = b;
+        paletteBytes[offset + 1] = g;
+        paletteBytes[offset + 2] = r;
+      }
+
+      const pixels = new Uint8Array(32 * 16);
+      for (let bmpY = 0; bmpY < 32; bmpY++) {
+        const sourceY = 31 - bmpY;
+        for (let x = 0; x < 32; x += 2) {
+          const left = indices[sourceY * 32 + x];
+          const right = indices[sourceY * 32 + x + 1];
+          pixels[bmpY * 16 + (x >> 1)] = (left << 4) | right;
+        }
+      }
+
+      const pixelOffset = 14 + 40 + paletteBytes.length;
+      const bytes = new Uint8Array(pixelOffset + pixels.length);
+      const view = new DataView(bytes.buffer);
+      view.setUint8(0, 0x42);
+      view.setUint8(1, 0x4d);
+      view.setUint32(2, bytes.length, true);
+      view.setUint32(10, pixelOffset, true);
+      view.setUint32(14, 40, true);
+      view.setInt32(18, 32, true);
+      view.setInt32(22, 32, true);
+      view.setUint16(26, 1, true);
+      view.setUint16(28, 4, true);
+      view.setUint32(30, 0, true);
+      view.setUint32(34, pixels.length, true);
+      view.setInt32(38, 2835, true);
+      view.setInt32(42, 2835, true);
+      view.setUint32(46, 16, true);
+      view.setUint32(50, 16, true);
+      bytes.set(paletteBytes, 54);
+      bytes.set(pixels, pixelOffset);
+
+      const previewData = previewContext.createImageData(32, 32);
+      for (let i = 0; i < indices.length; i++) {
+        const color = palette[indices[i]];
+        const offset = i * 4;
+        previewData.data[offset] = color[0];
+        previewData.data[offset + 1] = color[1];
+        previewData.data[offset + 2] = color[2];
+        previewData.data[offset + 3] = indices[i] === 0 ? 0 : 255;
+      }
+      return { bytes, colors: palette, previewData };
+    }
+
+    function drawBitmap() {
+      if (!currentBitmap) return;
+      previewContext.clearRect(0, 0, 32, 32);
+      const fit = document.querySelector('input[name="fit"]:checked').value;
+      const scale = fit === "cover"
+        ? Math.max(32 / currentBitmap.width, 32 / currentBitmap.height)
+        : Math.min(32 / currentBitmap.width, 32 / currentBitmap.height);
+      const width = currentBitmap.width * scale;
+      const height = currentBitmap.height * scale;
+      previewContext.imageSmoothingEnabled = true;
+      previewContext.drawImage(currentBitmap, (32 - width) / 2, (32 - height) / 2, width, height);
+      const result = makeBmp(previewContext.getImageData(0, 0, 32, 32));
+      outputBytes = result.bytes;
+      previewContext.putImageData(result.previewData, 0, 0);
+      emptyPreview.hidden = true;
+      downloadButton.disabled = false;
+      const colorCount = result.colors.length - 1;
+      details.innerHTML = `Output: <strong>32 × 32 · 4-bit BMP · ${colorCount} artwork colors</strong>`;
+      paletteView.replaceChildren();
+      for (let i = 1; i < result.colors.length; i++) {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.title = `Palette color ${i}: RGB ${result.colors[i].join(", ")}`;
+        swatch.style.backgroundColor = `rgb(${result.colors[i].join(" ")})`;
+        paletteView.append(swatch);
+      }
+      setStatus(`Ready · ${outputBytes.length} bytes · 16-entry palette`);
+    }
+
+    async function openFile(file) {
+      if (!file) return;
+      const allowed = /\.(png|jpe?g|bmp)$/i.test(file.name);
+      if (!allowed) {
+        setStatus("Choose a PNG, JPG, or BMP image.", true);
+        return;
+      }
+      if (currentBitmap?.close) currentBitmap.close();
+      currentBitmap = null;
+      downloadButton.disabled = true;
+      outputBytes = null;
+      setStatus("Reading image…");
+      try {
+        currentBitmap = await createImageBitmap(file);
+        fileNameLabel.textContent = `${file.name} · ${currentBitmap.width} × ${currentBitmap.height}`;
+        outputName = file.name.replace(/\.[^.]+$/, "") + ".bmp";
+        drawBitmap();
+      } catch (error) {
+        fileNameLabel.textContent = file.name;
+        setStatus("This image could not be decoded by the browser. Try saving it as PNG or JPG.", true);
+        console.error("Image decode failed:", error);
+      }
+    }
+
+    fileInput.addEventListener("change", () => openFile(fileInput.files[0]));
+    document.querySelectorAll('input[name="fit"]').forEach(input => {
+      input.addEventListener("change", drawBitmap);
+    });
+
+    for (const eventName of ["dragenter", "dragover"]) {
+      dropZone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropZone.classList.add("dragging");
+      });
+    }
+    for (const eventName of ["dragleave", "drop"]) {
+      dropZone.addEventListener(eventName, event => {
+        event.preventDefault();
+        dropZone.classList.remove("dragging");
+      });
+    }
+    dropZone.addEventListener("drop", event => openFile(event.dataTransfer.files[0]));
+
+    downloadButton.addEventListener("click", () => {
+      if (!outputBytes) return;
+      const url = URL.createObjectURL(new Blob([outputBytes], { type: "image/bmp" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = outputName;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  </script>
+</body>
+</html>
