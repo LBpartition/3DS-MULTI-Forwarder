@@ -42,3 +42,8 @@
          - With `.png`/`.jpg` & `.wav` files, see the ReadMe for more info
 - NDS - Support for Custom Icons (also used for NDS Banners)
          - With `.bmp` files, see the ReadMe for more info
+
+### v0.4.1
+- UI tweaks
+- Bug Fixes (Banners for Custom Title Names using two lines.)
+- Allow Uninstalling **ALL** listed TWL Titles
