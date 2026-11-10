@@ -2,13 +2,13 @@
 #### Tested on New 3DS & Old 3DS XL
 ### Create, Install & Manage Custom Forwarders for 3DS
 - 3DSX - `.3dsx`
-   - [HomeBrew Launcher](https://github.com/PabloMK7/homebrew_launcher_dummy/releases) Required
+    - Requires [HomeBrew Launcher](https://github.com/PabloMK7/homebrew_launcher_dummy/releases)
 - .NDS - `.nds`
-   - [Twilight Menu](https://github.com/DS-Homebrew/TWiLightMenu) Required
+    - Requires [Twilight Menu](https://github.com/DS-Homebrew/TWiLightMenu)
 - GBA - `.gba`
-   - [gpSP3D](https://github.com/bheppe/gpsp-3d/releases/latest) Required
+    - Requires [gpSP-3D](https://github.com/bheppe/gpsp-3d/releases/latest)
 - SNES - `.smc`, `.sfc`, `.fig`, `.bs`, `.bsx`.
-   - [Snes9x-3D](https://github.com/bheppe/snes9x_3ds/releases/latest) Required
+    - Requires [Snes9x-3D](https://github.com/bheppe/snes9x_3ds/releases/latest)
 
 ### Features
 - Preview on top screen before creating
