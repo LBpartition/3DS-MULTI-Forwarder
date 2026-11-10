@@ -1,6 +1,6 @@
-# MULTI-Forwarder
-
-### Create, Install & Manage Custom Forwarders for 
+# 3DS MULTI-Forwarder
+#### Tested on New 3DS & Old 3DS XL
+### Create, Install & Manage Custom Forwarders for 3DS
 - 3DSX - `.3dsx`
    - [HomeBrew Launcher](https://github.com/PabloMK7/homebrew_launcher_dummy/releases) Required
 - .NDS - `.nds`
@@ -13,40 +13,45 @@
 ### Features
 - Custom Title Names & Publisher Names
 - Preview Icon, Banner & Title on top screen
-- A Tab to list your installed Forwarders, with the option to uninstall them. 
---- 3DSX / GBA / SNES
+- Custom Icons, Banners & Banner Audio support
+- Manage your installed Forwarders, with the option to uninstall them. 
+
+**3DSX / GBA / SNES**
 - 3 Different Banner Styles - Switch between them with `Select`
 - Create your own custom Icons and Banners with `.png`/`.jpg` & `.wav` files
---- NDS
-- Create your own custom Icons (also used for NDS banners) with `.bmp' files
-- A Tab to list your installed TWL Titles - Keep track of the 3DS's limit of 40 TWL Titles & Uninstall NDS Forwarders
 
-## Tested on New 3DS & Old 3DS XL with:
-
-|  |  |  |  |  |  
-
-|---|---|---|
-| List & Uninstall Forwarders: |  |  |
-|---|---|---|
-| Preview Banners & Icons Before Creating: |  |  |
-|---|---|---|
-|  |  |  |
-|---|---|---|
-|  |  |  |
-|---|---|---|
-| Custom 3DSX / GBA / SNES Icons, Banners & Banner Audio |  |  |
-|---|---|---|
-| Custom NDS Icons (Also used for banners) |  |  |
-|---|---|---|
+**NDS**
+- Create your own custom Icons (also used for NDS banners) with `.bmp` files
+- Manage NDS Forwarders / installed TWL Titles
+    - Keep track of the 3DS's limit of 40 TWL Titles, with the option to uninstall NDS Forwarders
+---
+  
+| Gallery: |  |
+|---|---|
+| Manage & Uninstall Forwarders: | |
+| <img width="400" height="480" alt="0-Installed" src="https://github.com/user-attachments/assets/4542f51b-8780-46ec-ade1-f8a304d70056" /> |  <img width="400" height="480" alt="0-TWL-Manager" src="https://github.com/user-attachments/assets/1436bae0-c5c3-4ae9-9ed3-0d981436761f" /> |
+| Preview Banners & Icons Before Creating: |  |
+| <img width="400" height="480" alt="Style1-PREVIEW" src="https://github.com/user-attachments/assets/4a9c61ba-e369-42b8-a293-9d42e71ba236" /> | <img width="400" height="480" alt="Style1-RESULT" src="https://github.com/user-attachments/assets/87cadb9e-77f8-4364-a120-bba46519c6ef" /> |
+| <img width="400" height="480" alt="Style2-PREVIEW" src="https://github.com/user-attachments/assets/0a328ecc-ceae-4be7-aac9-c01174603281" /> | <img width="400" height="480" alt="Style2-RESULT" src="https://github.com/user-attachments/assets/a0fffc07-844d-47f1-bdf8-b58833137210" /> |
+| <img width="400" height="480" alt="Style3-PREVIEW" src="https://github.com/user-attachments/assets/ad8cff74-9bdc-4ff4-8727-18b5e69f0368" /> | <img width="400" height="480" alt="Style3-RESULT" src="https://github.com/user-attachments/assets/050a9b12-6df9-4915-8f1f-c0e1a973589c" /> |
+| Custom 3DSX / GBA / SNES Icons, Banners & Banner Audio |  |
+| <img width="400" height="480" alt="StyleCUSTOM-PREVIEW" src="https://github.com/user-attachments/assets/fa600177-1335-49cf-aef8-5242732cfd29" /> | <img width="400" height="480" alt="StyleCUSTOM-RESULT" src="https://github.com/user-attachments/assets/614cf6ac-ca18-4e52-bc75-0077515ab460" /> |
+| Custom NDS Icons (Also used for banners) |  |
+| <img width="400" height="480" alt="ndsCustom-PREVIEW" src="https://github.com/user-attachments/assets/e5cfbe21-518a-488a-b993-23e570c63eb7" /> | <img width="400" height="480" alt="ndsCustom-RESULT" src="https://github.com/user-attachments/assets/1ae1b66d-5969-4654-8e64-74f5218c46bc" />
+ |
 
 ## How to Use:
 1. Download the [Latest MULTI-Forwarder.zip](https://github.com/LBpartition/MULTI-Forwarder/releases/latest),
 2. Extract the zip and copy the `3ds` folder to your 3DS SD card.
 3. Launch `MULTI-Forwarder` from the Homebrew Launcher
-4. Choose a .3dsx/.nds/.gba/.smc/.sfc/.*etc* file to forward, Press `A` and go through the prompts to create the forwarder (*Custom Title Name? & Custom Publisher?)
-- Preview Banner & Title on the Top Screen before creating the Forwarder
-- 3 Different Banner Styles: Switch between them with `Select` (4th banner style *custom* is automatically shown if custom banner files are found)
-- NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
+4. Choose a .3dsx/.nds/.gba/.smc/.sfc/.*etc* file to forward,
+    - Press `A` and go through the prompts to create the forwarder
+        - *Custom Title Name?*
+        - *Custom Publisher?*
+    - Preview Banner & Title on the Top Screen before creating the Forwarder
+    - 3 Different Banner Styles: Switch between them with `Select`
+        - 4th banner style *custom* is automatically shown if custom banner files are found
+        - NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
 
 ## Custom Icons, Banners & Banner Audio
 
@@ -58,22 +63,24 @@ Place your `.png`/`.jpg` & `.wav` files in the same folder as your .3dsx & name 
 - `fallout2.3dsx` - 3dsx / .gba / .*etc*
 - `fallout2.png` - Icon (48x48)
 - `fallout2.banner.png` - Banner (256x128)
-- `fallout2.banner.wav` - Banner audio (3 seconds max)
+- `fallout2.banner.wav` - Banner Audio (3 seconds max)
 
-   - A matching WAV replaces the template audio for flat and 3D banners, even without a custom banner image. If no WAV is found, the template audio remains.
+   - Note: Banners are silent if no .banner.wav file is found
 
 ##### NDS Custom Icons
-    - NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
+
+###### Note: NDS Forwarders only have 2 banner styles, Custom & Default. No custom banner audio.
+
 Place your `.bmp` files in the same folder as your .nds rom & name them like this:
 - `Pokemon - Storm Silver.nds` - .nds
 - `Pokemon - Storm Silver.bmp` - Icon (32x32) (Also used for NDS Banners)
 
    - Note: .nds custom icon requirements:
-     - `.bmp` only.
-     - **4 bits per pixel**: indexed/paletted, up to 16 colors.
-     - A **40-byte `BITMAPINFOHEADER`** and **BI_RGB compression** (`0`).
-     - At most 16 palette entries. If the palette count is zero, the code assumes 16.
-     - Pixel data must contain 512 bytes (32 rows × 16 bytes); standard padding is not needed at this width.
+        - `.bmp` only.
+        - **4 bits per pixel**: indexed/paletted, up to 16 colors.
+        - A **40-byte `BITMAPINFOHEADER`** and **BI_RGB compression** (`0`).
+        - At most 16 palette entries. If the palette count is zero, the code assumes 16.
+        - Pixel data must contain 512 bytes (32 rows × 16 bytes); standard padding is not needed at this width.
 --- 
 
 ## Bugs & Suggestions
