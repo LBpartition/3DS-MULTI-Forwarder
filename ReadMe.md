@@ -89,7 +89,7 @@
 [Post a new issue here](https://github.com/LBpartition/MULTI-Forwarder/issues) to report bugs or suggest features
 
 ## Credits
-- bheppe - GUI, Custom Icons & Banners + GBA/SNES Forwarders - Based on [Snes9xn](github.com/bheppe/snes9x_3ds) + [gpSP-3D & IconMaker](https://github.com/bheppe/gpsp-3d)
+- bheppe - GUI, Custom Icons & Banners + GBA/SNES Forwarders - Based on [IconMaker for gpSP-3D](https://github.com/bheppe/gpsp-3d) & [Snes9x](github.com/bheppe/snes9x_3ds)
 - Fadgiras - 3DSX Forwarders - Based on [RetroArchForwarder3DS](https://github.com/Fadgiras/RetroArchForwarder3DS)
 - Fishand73 - NDS Forwarders + Custom Icons - Based on [ndsForwarder Fork](https://github.com/fishand73/ndsForwarder)
 - Claude - its vibecoded
