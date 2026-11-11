@@ -46,7 +46,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.4.1"
+#define ICONMAKER_VERSION "0.4.2"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define FORWARDER_UID_START 0xC0000u
@@ -1768,7 +1768,13 @@ static void outlined_text(u8 *img, int w, int h, const ui_font *f, int y, const 
 
 static void banner_custom_title(const char *title, int sys, u8 *banner, int maxw)
 {
-   banner_name(title, sys, banner, maxw);
+   char lines[2][64];
+   int nl = wrap_name(title, sys, &ui_font_bold, maxw, lines, 2), i;
+   int y = (128 - nl * 20) / 2;
+
+   for (i = 0; i < nl; i++)
+      rgba_text(banner, 256, 128, &ui_font_bold, 120, y + i * 20,
+                lines[i], 0xFFFFFF);
 }
 
 /* the 3D banner's name strip (256x64, transparent): the name big on one
@@ -2049,9 +2055,11 @@ static int make_rom_icon(const char *path, const entry *e,
       if (art.flat)
       {
          if (!art.has_banner_png)
+         {
             default_banner(art.title, art.label, 128, 128, art.banner,
                            banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
-         banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
+            banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
+         }
       }
       else
          name_strip(art.title, art.sys, art.name);
@@ -2246,9 +2254,11 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
       if (art.flat)
       {
          if (!art.has_banner_png)
+         {
             default_banner(art.title, art.label, 128, 128, art.banner,
                            banner_style == STYLE_CLEAR ? BANNER_CLEAR : 0);
-         banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
+            banner_custom_title(art.title, art.sys, art.banner, 256 - 120 - 8);
+         }
       }
       if (!art.flat)
          name_strip(art.title, art.sys, art.name);
@@ -2402,7 +2412,7 @@ static int make_icon(const char *path, const entry *e, const char *custom_title,
       memcpy(three_d_bnr + three_d_cwav_off, template_banner + template_cwav_off,
              template_cwav_size);
       three_d_banner_size = three_d_cwav_off + template_cwav_size;
-      audio_result = add_banner_cwav(three_d_bnr, three_d_bnr_size,
+      audio_result = add_banner_cwav(three_d_bnr, banner_reserved,
                                      &three_d_banner_size, path, err, errlen);
       if (audio_result < 0)
       {
@@ -2757,7 +2767,7 @@ static void draw_installed_footer(int count)
    draw_control_hints("L / R: Switch Tabs", UI_W - 52);
    ui_text_right(&ui_font_small, UI_W - 10, FOOT_Y + 5, total, C_DIM);
    if (count)
-      draw_right_control_hint("X", "Uninstall", UI_W - 8, TAB_Y + TAB_H,
+      draw_right_control_hint("X", "Uninstall", UI_W - 14, TAB_Y + TAB_H,
                               LIST_Y - TAB_Y - TAB_H);
 }
 
@@ -2772,7 +2782,7 @@ static void draw_twl_footer(bool can_uninstall)
    draw_control_hints(keys, UI_W - 64);
    ui_text_right(&ui_font_small, UI_W - 10, FOOT_Y + 5, total, C_DIM);
    if (can_uninstall)
-      draw_right_control_hint("X", "Uninstall", UI_W - 8, TAB_Y + TAB_H,
+      draw_right_control_hint("X", "Uninstall", UI_W - 14, TAB_Y + TAB_H,
                               LIST_Y - TAB_Y - TAB_H);
 }
 

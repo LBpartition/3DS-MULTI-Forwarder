@@ -81,8 +81,10 @@ int multi_nds_build_install(const char *rom_path, const char *custom_title,
    ReturnResult *result;
    if (!builder_ready && multi_nds_initialize(err, errlen))
       return -1;
+   // Invalid extended banner CRCs fall back to a static v1 banner; base CRC
+   // and header validation remain strict in the builder.
    result = builder.buildCIA(rom_path, false,
-                             custom_title ? custom_title : "", false);
+                             custom_title ? custom_title : "", true);
    if (!result)
    {
       set_error(err, errlen, std::string(), 0xFFFFFFFF);
