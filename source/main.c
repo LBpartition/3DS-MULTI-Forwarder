@@ -46,7 +46,7 @@
 #define STBI_NO_STDIO_WRITE
 #include "stb_image.h"
 
-#define ICONMAKER_VERSION "0.4.2"
+#define ICONMAKER_VERSION "0.4.3"
 #define MAX_ENTRIES 1024
 #define MAX_ICONS   300
 #define FORWARDER_UID_START 0xC0000u
@@ -2893,7 +2893,7 @@ static void draw_bottom(int tab, int sel, int top)
                        s ? C_TEXT : C_TEXT2, ROW_W - 90);
          }
          ui_text_right(&ui_font_small, ROW_X + ROW_W - 10, y + (h - ui_font_small.ascent) / 2 - 1,
-                       systems[ic->sys].console,
+                       ic->sys == SYS_GBA ? "gpSP" : systems[ic->sys].console,
                        ic->sys == SYS_SNES ? C_ACCENT2 :
                        ic->sys == SYS_3DSX ? C_GOOD : C_ACCENT);
       }
@@ -2981,7 +2981,7 @@ static void draw_top_game(const game_art *a)
    top_bg();
    if (!a->flat)
    {
-      char first[64], second[64];
+      char first[64], second[64], launcher[64];
       ui_rrect(42, 0, 236, 168, 7, C_BG);
       ui_rrect_outline(42, 0, 236, 168, 7, 1, C_FAINT);
       ui_rrect(104, 0, 112, 108, 16, C_PANEL);
@@ -2994,7 +2994,9 @@ static void draw_top_game(const game_art *a)
       ui_text_center(&ui_font_title, UI_W / 2, 108, first, C_TEXT);
       if (second[0])
          ui_text_center(&ui_font_title, UI_W / 2, 127, second, C_TEXT);
-      ui_text_center(&ui_font_small, UI_W / 2, 151, "Homebrew  ·  3DSX", C_ACCENT);
+      snprintf(launcher, sizeof(launcher), "Homebrew  ·  %s",
+               systems[a->sys].name);
+      ui_text_center(&ui_font_small, UI_W / 2, 151, launcher, C_ACCENT);
    }
    else
    {
