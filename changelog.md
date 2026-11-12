@@ -57,6 +57,6 @@
 - Bug Fixes - Title Name text is no longer incorrectly used for Custom Banners (3DSX / GBA / SNES)
 - Bug Fixes - Fixed BannerCRC issue with certain NDS ROMs (Blaze Black 2)
 
-### v0.4.2
+### v0.4.3
 - Bug Fixes - GBA & SNES Banner previews now correctly show `gpSP 3D` / `Snes9x` text instead of `3DSX`
 - UI Tweaks - GBA label in Installed tab is now `gpSP`
