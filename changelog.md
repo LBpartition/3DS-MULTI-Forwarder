@@ -1,4 +1,4 @@
-### v0.2.0
+### v0.2.0 - 3DSX-Forwarder
 - Initial Release
 
 ### v0.2.1
@@ -27,7 +27,7 @@
 - UI Improvements
 - Add support for custom Banner Audio, see [ReadMe - Custom Icons, Banners & Banner Audio](https://github.com/LBpartition/3DSX-Forwarder/tree/main#custom-icons-banners--banner-audio) for more info
 
-### v0.4.0
+### v0.4.0 - 3DSX-Forwarder is now MULTI-Forwarder
 - UI Improvements & BugFixes
 - Add support for more Forwarders:
      - 3DSX - `.3dsx`
@@ -58,5 +58,5 @@
 - Bug Fixes - Fixed BannerCRC issue with certain NDS ROMs (Blaze Black 2)
 
 ### v0.4.3
-- Bug Fixes - GBA & SNES Banner previews now correctly show `gpSP 3D` / `Snes9x` text instead of `3DSX`
-- UI Tweaks - GBA label in Installed tab is now `gpSP`
+- Bug Fixes - GBA & SNES `3D style` Banner previews now correctly shows `gpSP 3D` / `Snes9x` text instead of `3DSX`
+- UI Tweaks - Installed tab: `GBA` label  is now `gpSP`
