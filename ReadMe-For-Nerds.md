@@ -11,7 +11,9 @@ Create and manage HOME Menu forwarders for 3DSX, GBA, SNES, and NDS games. The a
 | SNES | `.sfc`, `.smc`, `.fig`, `.bs`, `.bsx` | Snes9x 3D installed as a CIA |
 | NDS | `.nds`, `.srl` | TWL forwarder installed to NAND; NDS Bootstrap forwarder pack required |
 
-SNES ZIP files are not supported by Snes9x 3D. ZIP files are treated as GBA games. PicoDrive, Sega Master System, and Mega Drive forwarders are not included.
+SNES ZIP files are not supported by Snes9x 3D. ZIP files are treated as GBA games. 
+
+PicoDrive3D3DS & armGBA were inspected, but cannot currently be supported.
 
 GBA forwarders write the selected ROM path to `sdmc:/3ds/gpsp3d/launch.txt` before launching gpSP 3D. SNES forwarders use `sdmc:/3ds/snes9x_3ds/launch.txt`. These launch files are written as needed; the app does not import, inspect, or delete the emulators' databases. NDS forwarders are limited to 40 installed TWL titles.
 
