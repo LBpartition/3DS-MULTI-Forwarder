@@ -51,9 +51,12 @@
 ### Extra
 - [NDS Custom Icon Converter Site](https://lbpartition.github.io/3DS-MULTI-Forwarder/NDS-Icon-Converter.html) - Convert your `.png` / `.jpg` / `.bmp` files to NDS Custom Icon `.bmp`'s
 
-- ### v0.4.2
+### v0.4.2
 - UI Tweaks
 - Bug Fixes - 3D Banner style Forwarders no longer refuse to install 
 - Bug Fixes - Title Name text is no longer incorrectly used for Custom Banners (3DSX / GBA / SNES)
 - Bug Fixes - Fixed BannerCRC issue with certain NDS ROMs (Blaze Black 2)
 
+### v0.4.2
+- Bug Fixes - GBA & SNES Banner previews now correctly show `gpSP 3D` / `Snes9x` text instead of `3DSX`
+- UI Tweaks - GBA label in Installed tab is now `gpSP`
